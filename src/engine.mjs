@@ -1,10 +1,12 @@
 import { digest, now, uid } from './store.mjs';
-import { retrieve, propose } from './intelligence.mjs';
+import { hybridRetrieve, propose } from './intelligence.mjs';
+import { ModelError } from './model.mjs';
+import { investigateBundle, validateBundle } from './investigation.mjs';
 import { experiment } from './experiment.mjs';
 
 export class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 export const fail = (status, message) => { throw new HttpError(status, message); };
-export const POLICY = 'pool-safety-v1';
+export const POLICY = 'pool-safety-v2';
 export const sectorList = ['healthcare', 'retail', 'finance', 'saas', 'manufacturing', 'telecom', 'public-services', 'media'];
 const bounded = (n, max) => Number.isSafeInteger(n) && n > 0 && n <= max;
 
@@ -12,6 +14,11 @@ export function validateChange(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'Expected a change object');
   if (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 180) fail(400, 'Title must contain 1-180 characters');
   if (!sectorList.includes(body.sector)) fail(400, 'Unsupported industry');
+  if (body.kind === 'assessment') {
+    try { return { kind: 'assessment', title: body.title.trim(), sector: body.sector, bundle: validateBundle(body.bundle) }; }
+    catch (e) { fail(400, e.message); }
+  }
+  if (body.kind && body.kind !== 'synthetic') fail(400, 'Unsupported workflow kind');
   if (!bounded(body.replicas, 32) || !bounded(body.poolPerReplica, 128)) fail(400, 'Replicas must be 1-32; pool must be 1-128');
   if (body.capacityBudget !== null && !bounded(body.capacityBudget, 4096)) fail(400, 'Capacity must be null or 1-4096');
   if (typeof body.evidenceFresh !== 'boolean' || typeof body.rollbackTested !== 'boolean') fail(400, 'Evidence and recovery flags must be booleans');
@@ -19,7 +26,7 @@ export function validateChange(body) {
 }
 
 export class Engine {
-  constructor(store, config) { this.store = store; this.config = config; this.busy = false; this.stopped = false; this.active = Promise.resolve(); }
+  constructor(store, config) { this.store = store; this.config = config; this.jobs = new Map(); this.stopped = false; this.active = Promise.resolve(); }
   seed(tenants) {
     for (const tenant of tenants) {
       const freshTenant = !this.store.target(tenant);
@@ -30,6 +37,7 @@ export class Engine {
       }
     }
     for (const c of this.store.all()) {
+      if (c.kind==='assessment' && c.state==='ANALYZED' && !c.analysis?.structuredHypotheses) { c.state='HELD';c.reason='Legacy assessment lacks validated structured grounding; resubmit';this.store.transaction(()=>{this.store.save(c);this.store.audit(c.tenant,'worker','legacy-assessment-held',{changeId:c.id});}); }
       if (c.state === 'INVESTIGATING') { c.state = 'QUEUED'; this.store.save(c); }
       if (c.state === 'VERIFYING') this.store.audit(c.tenant, 'worker', 'verification-resume', { changeId: c.id });
     }
@@ -39,7 +47,7 @@ export class Engine {
     if (!key || !/^[a-zA-Z0-9_-]{8,100}$/.test(key)) fail(400, 'Idempotency-Key must be 8-100 safe characters');
     const existing = this.store.byKey(user.tenant, key);
     if (existing) { if (existing.request_hash !== hash) fail(409, 'Idempotency key reused with different content'); return this.store.change(user.tenant, existing.id); }
-    if (this.store.list(user.tenant).filter(c => ['QUEUED', 'INVESTIGATING', 'EXECUTE_QUEUED', 'VERIFYING'].includes(c.state)).length >= 20) fail(429, 'Tenant queue limit reached');
+    if (this.store.pendingCount(user.tenant) >= 20) fail(429, 'Tenant queue limit reached');
     const c = { ...data, id: uid(), tenant: user.tenant, requester: user.id, state: 'QUEUED', createdAt: now(), updatedAt: now(), policyVersion: POLICY };
     this.store.transaction(() => { this.store.insert(c, key, hash); this.store.audit(user.tenant, user.id, 'change-submitted', { changeId: c.id }); });
     return c;
@@ -49,6 +57,7 @@ export class Engine {
   approve(user, id) {
     const c = this.current(user, id);
     if (c.state !== 'REVIEW') fail(409, 'Change is not awaiting approval');
+    if (c.policyVersion !== POLICY) fail(409, 'Policy changed; resubmit for investigation');
     if (user.id === c.requester) fail(403, 'Requester cannot approve their own change');
     if (!this.evidenceValid(c)) fail(409, 'Evidence has expired, changed or been removed; resubmit');
     if (this.store.target(c.tenant).revision !== c.action.expectedRevision) fail(409, 'Target changed; resubmit for investigation');
@@ -62,15 +71,17 @@ export class Engine {
     if (['EXECUTE_QUEUED', 'VERIFYING', 'COMPLETED', 'ROLLED_BACK'].includes(c.state)) return c;
     if (c.state !== 'APPROVED') fail(409, 'Independent approval required');
     this.preflight(c);
+    if (this.store.pendingCount(user.tenant) >= 20) fail(429, 'Tenant queue limit reached');
     c.state = 'EXECUTE_QUEUED'; c.reason = 'Execution queued; safety checks will run again before application.';
     this.store.transaction(() => { this.store.save(c); this.store.audit(c.tenant, user.id, 'execution-requested', { changeId: c.id }); });
     return c;
   }
   preflight(c) {
-    if (!c.approval || c.approval.approver === c.requester || Date.parse(c.approval.expiresAt) <= Date.now() || c.approval.actionDigest !== digest(c.action)) fail(409, 'Approval invalid or expired');
+    if (!c.approval || c.approval.approver === c.requester || !(Date.parse(c.approval.expiresAt) > Date.now()) || c.approval.actionDigest !== digest(c.action)) fail(409, 'Approval invalid or expired');
     if (!this.config.users.some(u => u.tenant === c.tenant && u.id === c.approval.approver && u.roles.includes('approver'))) fail(409, 'Approver is no longer authorized');
     if (c.policyVersion !== POLICY || !this.evidenceValid(c)) fail(409, 'Policy or evidence changed; resubmit');
-    if (Date.now() - Date.parse(c.investigatedAt) > 30 * 60000) fail(409, 'Investigation expired; resubmit');
+    const age = Date.now() - Date.parse(c.investigatedAt);
+    if (!Number.isFinite(age) || age < 0 || age > 30 * 60000) fail(409, 'Investigation invalid or expired; resubmit');
     if (this.store.target(c.tenant).revision !== c.action.expectedRevision) fail(409, 'Target revision drift; resubmit');
   }
   cancel(user, id) {
@@ -80,7 +91,14 @@ export class Engine {
   }
   async investigate(c) {
     c.state = 'INVESTIGATING'; this.store.save(c);
-    c.evidence = retrieve(this.store.docs(c.tenant), `${c.title} ${c.sector} database connection pool capacity recovery`);
+    if (c.kind === 'assessment') {
+      await investigateBundle(c, this.store, this.config);
+      if (!this.evidenceValid(c)) throw new ModelError('Evidence expired or changed during investigation');
+      c.state = 'ANALYZED'; c.reason = 'Read-only investigation complete. Findings are hypotheses, not execution authorization.'; c.investigatedAt = now();
+      this.store.transaction(() => { this.store.save(c); this.store.audit(c.tenant, 'worker', 'assessment-completed', { changeId: c.id, bundleDigest: digest(c.bundle), tools: c.trace.map(x => x.tool), model: this.config.llm.model }); });
+      return;
+    }
+    c.evidence = await hybridRetrieve(this.store, c.tenant, `${c.title} ${c.sector} database connection pool capacity recovery`, this.config);
     c.analysis = await propose(c, c.evidence, this.config);
     c.investigatedAt = now();
     const target = this.store.target(c.tenant);
@@ -124,15 +142,19 @@ export class Engine {
     }
   }
   tick() {
-    if (this.busy || this.stopped) return this.active;
-    const c = this.store.all().find(c => c.state === 'VERIFYING') ?? this.store.all().find(c => ['QUEUED', 'EXECUTE_QUEUED'].includes(c.state));
-    if (!c) return this.active;
-    this.busy = true;
-    this.active = (async () => {
+    if (this.stopped) return this.active;
+    const limit = Math.max(1, Math.min(8, this.config.workerConcurrency ?? 2));
+    for (const c of this.store.pending()) {
+      if (this.jobs.size >= limit) break;
+      if (this.jobs.has(c.tenant)) continue;
+      const job = (async () => {
       try { if (c.state === 'QUEUED') await this.investigate(c); else if (c.state === 'VERIFYING') await this.verify(c); else await this.apply(c); }
-      catch (e) { c.state = 'HELD'; c.reason = e instanceof HttpError ? e.message : 'Worker failed safely; review evidence and resubmit.'; this.store.transaction(() => { this.store.save(c); this.store.audit(c.tenant, 'worker', 'held', { changeId: c.id, reason: c.reason }); }); }
-      finally { this.busy = false; }
-    })(); return this.active;
+      catch (e) { c.state = 'HELD'; c.reason = e instanceof HttpError || e instanceof ModelError ? e.message : 'Worker failed safely; review evidence and resubmit.'; this.store.transaction(() => { this.store.save(c); this.store.audit(c.tenant, 'worker', 'held', { changeId: c.id, reason: c.reason }); }); }
+      finally { this.jobs.delete(c.tenant); }
+      })();
+      this.jobs.set(c.tenant, job);
+    }
+    this.active = Promise.all([...this.jobs.values()]); return this.active;
   }
   async stop() { this.stopped = true; await this.active; }
 }

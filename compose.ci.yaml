@@ -1,0 +1,14 @@
+services:
+  changeguard:
+    environment:
+      CG_MODEL_BASE: http://model-fixture:11434
+  model-fixture:
+    build: .
+    command: ["node", "tools/ci-model.mjs"]
+    environment:
+      CI_MODEL_FIXTURE: "true"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      disable: true

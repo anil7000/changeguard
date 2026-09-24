@@ -6,12 +6,14 @@ import { join } from 'node:path';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { start } from '../src/server.mjs';
 import { digest } from '../src/store.mjs';
+import { modelFixture } from './model-fixture.mjs';
 
 const user = (id, tenant, roles) => ({ id, tenant, roles, token: randomBytes(32).toString('hex') });
 const config = { users: [user('engineer', 'a', ['viewer', 'operator', 'admin', 'approver']), user('reviewer', 'a', ['viewer', 'approver']), user('other', 'b', ['viewer', 'operator', 'admin']), user('viewer', 'a', ['viewer'])] };
 const safe = { title: 'Retail database connection pool rollout', sector: 'retail', replicas: 3, poolPerReplica: 10, capacityBudget: 90, evidenceFresh: true, rollbackTested: true };
 
 async function setup(t) {
+  config.llm = (await modelFixture(t)).llm;
   const dir = mkdtempSync(join(tmpdir(), 'changeguard-test-')); const dbPath = join(dir, 'db.sqlite');
   const ctx = { app: await start({ config, dbPath, interval: 10 }), dir, dbPath };
   t.after(async () => { await ctx.app.close(); rmSync(dir, { recursive: true, force: true }); });
@@ -26,7 +28,7 @@ async function setup(t) {
 
 test('full HTTP workflow: retrieve, rehearse, approve, apply, verify, audit', async t => {
   const ctx = await setup(t); const c = await ctx.submit(); const reviewed = await ctx.wait(c.id, 'REVIEW');
-  assert.equal(reviewed.rehearsal.failed, 0); assert.ok(reviewed.evidence.length); assert.equal(reviewed.analysis.provider, 'deterministic');
+  assert.equal(reviewed.rehearsal.failed, 0); assert.ok(reviewed.evidence.length); assert.equal(reviewed.analysis.provider, 'configured-model');
   assert.equal((await ctx.request(`/api/changes/${c.id}/execute`, { method: 'POST' })).status, 409);
   assert.equal((await ctx.request(`/api/changes/${c.id}/approve`, { method: 'POST' })).status, 403);
   assert.equal((await ctx.request(`/api/changes/${c.id}/approve`, { method: 'POST', who: 1 })).status, 200);

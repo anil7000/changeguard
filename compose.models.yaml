@@ -1,0 +1,14 @@
+services:
+  changeguard:
+    environment:
+      CG_MODEL_BASE: http://ollama:11434
+  ollama:
+    image: ollama/ollama:0.34.4
+    volumes:
+      - models:/root/.ollama
+    environment:
+      OLLAMA_NO_CLOUD: "true"
+    # No host port: only the private Compose network can call this model server.
+    restart: unless-stopped
+volumes:
+  models:

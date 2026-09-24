@@ -1,357 +1,308 @@
 # ChangeGuard
 
-## Evidence before action
+## Agentic change intelligence: connect the incident to the evidence
 
-**A runnable change-assurance workbench, not a chatbot.** Submit a change, retrieve runbook evidence, rehearse dependency pressure, require independent approval, execute a bounded action and verify the outcome.
+Maintained by **Anil Kumar Tangirala** · **v0.2.0** · Node.js 24 · local Qwen models · SQLite
 
-Maintained by **Anil Kumar Tangirala**. **v0.1.0: single-node evaluation product.**
+[Cross-platform validation](https://github.com/anil7000/changeguard/actions/workflows/validate.yml) · [Actual QA results and repaired defects](VERIFICATION.md)
 
-Includes a browser dashboard, HTTP API, SQLite persistence, background orchestration, cited retrieval, an optional LLM adapter, role-separated approvals, HTTP rehearsal probes and audit export. No third-party runtime packages or cloud account are required.
+An operations investigation platform for the question that monitoring alone does not answer: **“What changed, which dependencies and teams could be affected, what evidence supports that explanation, and what must we check before intervening?”**
 
-**Execution is restricted to a synthetic HTTP connection-pool fixture.** No Kubernetes/cloud write connector, enterprise SSO or compliance certification is included. This is a deployable evaluation application, not an enterprise production release.
+ChangeGuard combines a reviewed service graph, before/after operational signals, deployment history and runbooks. An LLM plans a bounded investigation, typed read-only tools calculate impact and correlations, hybrid RAG retrieves supporting knowledge, and a skeptical model pass checks each hypothesis. The result is a persisted evidence workspace with owners, citations, tool receipts and explicit uncertainty—not a chat transcript.
 
-## Problem and scope
+**Runnable scope:** a single-node, local-first investigation product with enterprise-oriented safety controls. Real operational exports can be analyzed read-only. The separate execution lab modifies only a synthetic HTTP connection pool. This is not an HA enterprise service, an autonomous production remediator, or a certified compliance product. See the explicit production gates below.
 
-A service change can pass unit tests yet exhaust a shared dependency. ChangeGuard makes that risk reviewable: it joins configuration, runbook evidence, measured rehearsal results, an exact action and an independent approval. It refuses missing evidence and rechecks target drift before execution.
+## The real problem and intended outcome
 
-The operational concepts apply to healthcare scheduling, retail checkout, financial-service infrastructure and other service-based systems. Industry labels do not activate industry-specific regulatory controls or clinical/payment decision-making.
+An incident can span multiple teams: checkout errors increase after a database configuration change; the database team sees saturation, the payments team sees latency, and the incident commander has separate dashboards, release logs and stale runbooks. Each team can interpret its own evidence without seeing the dependency chain. A plausible AI explanation is also dangerous if it invents a cause or encourages an unsafe rollback.
 
-| Capability | Implemented behavior |
-|---|---|
-| Non-chat dashboard | Change queue, evidence, hypotheses, test results, approvals, execution and audit export |
-| Persistent workflow | SQLite transactions, WAL, background jobs and restart reconciliation |
-| Knowledge ingestion | Reviewed Markdown/text importer and authenticated runbook API |
-| Retrieval | Tenant-scoped lexical chunk ranking, source references, digests and expiry |
-| Optional LLM analysis | Chat-completions-compatible adapter, cited hypotheses, bounded responses and fallback |
-| Rehearsal | Trusted child process, loopback HTTP fixture, concurrent probes and measured responses |
-| Authorization | Bearer identities, tenant scope, operator/admin/approver roles and self-approval rejection |
-| Safety | Action digest, approval expiry, evidence validity and target-revision checks |
-| Recovery | Resume verification without reapplying; restore the synthetic fixture on failed verification |
-| Audit | Hash-linked local events and downloadable JSON |
+ChangeGuard makes that investigation reproducible. It records the supplied measurements, follows the dependency graph toward potentially affected consumers, correlates recent changes, retrieves runbooks with provenance, and challenges its generated findings. It does not replace your monitoring, source-of-truth CMDB or change approval system. It reduces the manual work of assembling and reviewing an evidence packet; no MTTR reduction or production adoption is claimed without a measured deployment.
 
-## Architecture diagrams
+### Problems addressed by the implemented workflow
 
-All primary architecture and usage diagrams are directly in this README.
+| Operational question | Implemented behavior | Important boundary |
+|---|---|---|
+| Did error rate regress? | Compare before/after error-rate fractions with a supplied limit | Not a statistical causality test |
+| Did p95 latency breach its limit? | Compare millisecond measurements | Input windows must be comparable |
+| Is a shared dependency saturated? | Evaluate saturation and map consumers | Graph is supplied, not discovered |
+| Is a queue accumulating work? | Compare queue depth against its limit | No automatic capacity provisioning |
+| Has availability fallen? | Handle lower-is-worse availability thresholds | Not multi-window SLO burn-rate calculation |
+| Is replication lag increasing? | Analyze lag in seconds | No database administration commands |
+| Is a certificate nearing expiry? | Evaluate remaining days as a preventive signal | Does not renew certificates |
+| Which teams could be affected? | Traverse transitive consumers and show owners/criticality | Potential impact is not observed failure |
+| Which release is temporally related? | Match same-service/direct-dependency changes within 15 minutes | Correlation is not proven RCA |
+| Is recovery evidence missing? | Check rollback availability and seven-day test recency | A recorded flag is not recovery proof |
+| Which runbooks support the explanation? | Dense embeddings + lexical ranking + reciprocal-rank fusion | Relevance is not truth |
+| Is the explanation actually supported? | Validate citations and review every hypothesis | Same-model review can share the generator's biases |
+| Can teams reproduce the investigation? | Export input, model identity, tool hashes, findings and review | Model inference is not guaranteed deterministic |
+| Would a pool change exceed capacity? | Separate HTTP rehearsal, independent approval and verified fixture execution | Synthetic lab only |
 
-### 1. Running architecture
+The same service/owner/signal contract applies to healthcare scheduling infrastructure, retail checkout, commercial SaaS, financial-service infrastructure, manufacturing APIs, telecom and public services. Sector labels are context, not domain-specific decision logic. Do not upload patient records, payment details or personal data; this product provides operational assessment, not clinical or financial advice.
 
-```mermaid
-flowchart TB
-  Engineer[Engineer browser] --> API[Authenticated HTTP API]
-  Reviewer[Reviewer browser] --> API
-  API --> DB[(SQLite jobs evidence approvals audit)]
-  API --> Worker[Background workflow worker]
-  Worker --> Retrieval[Cited lexical retrieval]
-  Retrieval --> DB
-  Worker --> Model[Optional model endpoint]
-  Worker --> Child[Trusted rehearsal child process]
-  Child --> HTTP[Loopback HTTP capacity fixture]
-  Worker --> Gate[Deterministic safety checks]
-  Gate --> Target[(Local synthetic target)]
-  Target --> Verify[Independent HTTP verification]
-  Verify --> DB
-```
+## Architecture and usage diagrams
 
-### 2. Change lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> QUEUED
-  QUEUED --> INVESTIGATING
-  INVESTIGATING --> HELD: missing evidence or worker failure
-  INVESTIGATING --> BLOCKED: capacity or rehearsal failure
-  INVESTIGATING --> REVIEW: checks pass
-  REVIEW --> APPROVED: independent reviewer
-  APPROVED --> EXECUTE_QUEUED: operator request
-  EXECUTE_QUEUED --> HELD: expiry or target drift
-  EXECUTE_QUEUED --> VERIFYING: atomic fixture update
-  VERIFYING --> COMPLETED: probes pass
-  VERIFYING --> ROLLED_BACK: synthetic postcondition fails
-  VERIFYING --> HELD: unsafe recovery
-  REVIEW --> CANCELLED
-  COMPLETED --> [*]
-```
-
-### 3. Retrieval and model boundary
+### 1. Runtime and dependencies
 
 ```mermaid
 flowchart TB
-  Files[Reviewed Markdown or text] --> Ingest[Admin ingestion]
-  Ingest --> Docs[(Tenant runbooks with expiry)]
-  Change[Change specification] --> Search[Fresh lexical retrieval]
-  Docs --> Search
-  Search --> Context[Cited bounded context]
-  Context --> Model[Optional model analysis]
-  Context --> Local[Deterministic fallback]
-  Model --> Validate[JSON and citation validation]
-  Validate --> Hypotheses[Unverified hypotheses]
-  Local --> Hypotheses
-  Hypotheses --> UI[Evidence workspace]
+  Browser[Operations dashboard] --> API[Node 24 authenticated API]
+  Export[Reviewed operational JSON export] --> API
+  API --> DB[(SQLite WAL jobs evidence vectors audit)]
+  API --> Worker[Bounded per-tenant worker scheduling]
+  Worker --> Agent[Planner and evidence synthesis]
+  Agent --> Tools[Four typed read-only tools]
+  Agent --> RAG[Hybrid semantic and lexical retrieval]
+  RAG --> DB
+  Agent --> LLM[Local Qwen3 through Ollama]
+  RAG --> Embeddings[Local Qwen3 embedding model]
+  Agent --> Review[Skeptical evidence review]
+  Review --> DB
+  DB --> API
 ```
 
-Retrieval uses lexical ranking, not embeddings. Retrieved text is untrusted data. Model output cannot grant approval, select executable commands or mutate the target.
+The application has no third-party JavaScript runtime dependencies. Model serving is a separate process. SQLite has an expression index on workflow state and tenant; embedding vectors are cached by tenant, provider/model identity and document fingerprint. A process lock prevents two servers from opening the same runtime database. This is **single-host ownership**, not distributed leader election.
 
-### 4. Security and approval
-
-```mermaid
-flowchart TB
-  Operator[Operator identity] --> Proposal[Exact action proposal]
-  Reviewer[Different approver identity] --> Approval[Digest-bound expiring approval]
-  Proposal --> Check[Recheck evidence role policy and revision]
-  Approval --> Check
-  Check --> Commit[Atomic target update and receipt]
-  Commit --> Verify[Independent probe process]
-  Verify --> Audit[Hash-linked local audit]
-  Untrusted[Model and runbook text] --> Analysis[Analysis only]
-  Analysis --> Proposal
-```
-
-Authorization is server-side, not button visibility. Tenant identity comes from the configured token, not request data. Workers receive no application credentials. The rehearsal process runs fixed trusted code: it is **not an OS sandbox for arbitrary code**.
-
-### 5. Hosting and dependencies
+### 2. Required AI investigation sequence
 
 ```mermaid
-flowchart TB
-  Browser[Local browser] --> Loopback[127.0.0.1 port 4310]
-  subgraph Host[Single evaluation host]
-    Loopback --> App[Node.js 24 application]
-    App --> Volume[(Private data directory)]
-    App --> Fixture[Ephemeral loopback fixture]
+sequenceDiagram
+  actor Operator
+  participant API
+  participant Worker
+  participant Model
+  participant Tools
+  participant RAG
+  Operator->>API: Submit current reviewed evidence bundle
+  API-->>Operator: Persisted job ID
+  Worker->>Model: Plan allowlisted read-only checks
+  Model-->>Worker: Validated plan
+  Worker->>Tools: Dependency and telemetry plus selected checks
+  Tools-->>Worker: Deterministic observations and digests
+  Worker->>RAG: Embed query and retrieve fresh tenant evidence
+  RAG-->>Worker: Ranked chunks with provenance
+  Worker->>Model: Synthesize cited hypotheses
+  Worker->>Model: Skeptically review every hypothesis
+  alt Evidence and review pass
+    Worker->>API: ANALYZED with receipts and limitations
+  else Missing model or invalid evidence or unsupported findings
+    Worker->>API: HELD with reason
   end
-  App -. optional HTTPS .-> Provider[Approved model service]
-  Volume --> Backup[Stopped consistent backup]
+  Operator->>API: Inspect and export assessment
 ```
 
-Docker runs the same application with a writable data mount, read-only filesystem, dropped capabilities, resource limits and health checks. Only one process may own a database. Do not share the SQLite database across hosts or network storage.
+There is no deterministic substitute for unavailable AI. Both reasoning and embeddings are required. Invalid JSON, empty findings, unknown citations, forbidden tools, stale evidence, model errors and rejected review findings hold the workflow. The model must separately cite tool observations and runbooks for each hypothesis. Source-to-consumer paths are validated against the actual graph; the summary's measurements are calculated, not generated. Obvious causal-certainty phrases and numerical claims in free-form mechanisms are rejected. These checks do not prove the remaining natural-language hypotheses true. Tools cannot fetch arbitrary URLs, execute shell commands or write infrastructure. There are three bounded chat calls, at most four distinct tools, a 20 KB serialized prompt budget, and a maximum 300-second timeout per model request. Narrow large investigations rather than silently truncating evidence.
 
-### 6. Governance and industry extensions
+### 3. Dependency impact, not an invented outage map
 
 ```mermaid
 flowchart TB
-  Owner[Organization owner] --> Scope[Approved data and operational scope]
-  Scope --> Input[Synthetic changes and reviewed runbooks]
-  Input --> Workflow[Common assurance workflow]
-  Workflow --> Evidence[Tests approvals outcomes audit export]
-  Evidence --> Review[Human control review]
-  Review -. future validated packs .-> Sectors[Healthcare retail finance and other controls]
+  DB[Database saturation observed] --> Payments[Payments potentially affected]
+  DB --> Checkout[Checkout errors observed]
+  Payments --> Checkout
+  DB --> DataOwner[Data platform owner]
+  Payments --> PaymentOwner[Payments platform owner]
+  Checkout --> CommerceOwner[Commerce owner]
 ```
 
-Evidence supports review; it does not establish regulatory compliance. Future industry packs require separate domain-specific validation.
+The input relation is `service.dependsOn`. Impact propagation runs in the reverse direction: a failing dependency can affect its consumers. A visited set terminates cycles. The temporal correlation tool examines the same service and direct dependencies only; it does not claim to prove transitive causality.
 
-## Deploy independently: native quick start
+### 4. Trust boundaries and execution separation
 
-### 1. Install and start
+```mermaid
+flowchart TB
+  Source[Untrusted text and operational exports] --> Validation[Schema timestamps references quotas]
+  Validation --> ReadOnly[Read-only agent tool boundary]
+  ReadOnly --> Report[Cited assessment only]
+  Report -. human investigation .-> Operator[Operator]
+  Lab[Synthetic pool proposal] --> Policy[Deterministic capacity and evidence checks]
+  Reviewer[Separate reviewer identity] --> Approval[Expiring exact-action approval]
+  Policy --> Approval
+  Approval --> Preflight[Recheck policy evidence role time and revision]
+  Preflight --> Fixture[Synthetic HTTP pool only]
+  Fixture --> Verify[Verify or restore fixture]
+```
 
-Prerequisites: Git, **Node.js 24.x** and an available local port 4310. No `npm install`, external database or model credential is needed.
+Model output never grants execution authority. An `assessment` record has no executable action. The lab enforces separate requester/approver identities, digest-bound approval, a 15-minute approval lifetime, a 30-minute investigation lifetime, current evidence, policy version and target revision checks. Invalid/future timestamps fail closed.
 
-```sh
+### 5. Local and container deployment
+
+```mermaid
+flowchart TB
+  Dev[Windows macOS Linux or WSL terminal] --> Native[Node server on loopback 4310]
+  Native --> LocalModel[Ollama on loopback 11434]
+  Native --> LocalData[Private local data directory]
+  Dev --> Compose[Docker Compose alternative]
+  Compose --> App[Non-root read-only application container]
+  Compose --> Ollama[Private-network Ollama container]
+  App --> Ollama
+  App --> Data[Persistent application data]
+  Ollama --> Weights[Persistent model volume]
+```
+
+### 6. Production adoption and compliance gates
+
+```mermaid
+flowchart TB
+  Pilot[Redacted local pilot] --> Eval[Representative incident and adversarial evaluation]
+  Eval --> Identity[Enterprise SSO secrets TLS and access review]
+  Identity --> Data[Retention deletion encryption and residency controls]
+  Data --> Reliability[Durable distributed queue HA backups and restore drills]
+  Reliability --> Assurance[Independent security review and audited operational procedures]
+  Assurance --> Approval[Organization-specific production approval]
+```
+
+These are **required future adoption gates**, not deployed components or certifications. Hash-linked local audit entries can be rewritten by an administrator who controls the database; export them to a separately controlled immutable system for meaningful tamper evidence. No HIPAA, PCI DSS, SOC 2 or other compliance attestation is claimed.
+
+## Run locally: Windows, macOS, Linux and WSL
+
+Prerequisites: Git, **Node.js 24.x**, and [Ollama](https://ollama.com/download). Start with roughly 16 GB system memory and sufficient free storage for model downloads, runtime libraries and working data; actual memory and latency depend on context, hardware and concurrent jobs. A GPU or Apple Silicon can improve inference latency. Model weights are free to download, but electricity, hardware and hosted compute are not free.
+
+Use PowerShell on Windows, Terminal on macOS, or a Linux/WSL shell. All application commands below are cross-platform Node commands; npm, Python, Java, Bash and `make` are not required.
+
+```text
 git clone https://github.com/anil7000/changeguard.git
 cd changeguard
 node --version
+ollama pull qwen3:4b
+ollama pull qwen3-embedding:0.6b
 node tools/init.mjs
 node src/server.mjs
 ```
 
-Open **http://127.0.0.1:4310**. Initialization creates `data/config.json` with random engineer and reviewer tokens and refuses to overwrite existing credentials. Read it locally. Restrict its Windows ACL to your user. Never commit or paste tokens into issues, screenshots or public logs.
+1. Ensure Ollama is running. If the desktop application has not started its server, run `ollama serve` in a separate terminal. Do not start a second server on an occupied port.
+2. Read the generated engineer token in your local `data/config.json`; never commit or share this file. Open `http://127.0.0.1:4310` and sign in. Tokens remain in browser memory only.
+3. Under **Evidence library**, ingest your reviewed incident runbook. For a safe first test, copy [the bundled incident runbook](examples/runbooks/incident-change.md), set a descriptive source reference and ingest it. No external documentation is crawled automatically.
+4. Under **Investigate an incident**, choose **Load synthetic example**, inspect the generated current timestamps, and run the investigation. Watch planning, collecting, retrieving, synthesizing and verifying stages.
+5. Inspect potential blast radius, service owners, agent plan, tool receipts, retrieved snippets, hypotheses and skeptical review. Export the investigation JSON. `HELD` is a valid safety outcome: inspect its reason rather than treating it as permission to skip AI.
+6. To analyze your own incident, paste or open a redacted JSON bundle with the same contract. Preserve real source timestamps; do not relabel old measurements as current.
+7. Optional: use the **Synthetic execution lab**. Submit a safe pool change, sign in with the reviewer token to approve it, then use the engineer token to execute and verify the local fixture. Nothing is written to your production platform.
 
-### 2. Submit as engineer
+### CLI and runbook ingestion
 
-Log in with the engineer token. Submit: industry `retail`, replicas `3`, pool per replica `20`, allocated capacity `120`. Confirm the evidence/recovery prerequisites for this synthetic scenario. The worker retrieves evidence and runs actual HTTP probes against an ephemeral fixture. A passing change reaches **REVIEW**, not automatic execution.
+With the application and models running, in a second terminal:
 
-The capacity value is the budget allocated to this service after reserving capacity for other clients. These are reviewed fixture inputs, not live discovered telemetry. The fixture models connection allocation; it is not an actual database engine.
-
-### 3. Review with a separate identity
-
-Inspect the evidence, action and measured results. Disconnect; log in with the reviewer token. Select the change and choose **Approve exact action**. Approval lasts 15 minutes and binds the action digest. A requester cannot self-approve even if assigned both roles. Two identities on a laptop demonstrate the control; a real team must assign them to separate people.
-
-### 4. Execute and verify
-
-Return as engineer and choose **Execute in synthetic target**. The server rechecks the approval, source validity, investigation age and expected target revision, updates the local fixture transactionally and runs fresh probes. **COMPLETED** means synthetic verification passed, not a production deployment.
-
-### 5. Exercise safety paths
-
-| Scenario | Input/action | Expected outcome |
-|---|---|---|
-| Excess demand | Replicas 10, pool 30, capacity 60 | BLOCKED, no target update |
-| Unknown capacity | Leave capacity blank | HELD, no guessed capacity |
-| Missing approval | Execute before approval | HTTP 409 |
-| Self-approval | Requester with approver role | HTTP 403 |
-| Evidence withdrawal | Delete cited runbook before execution | Execution denied |
-| Target drift | Complete another change against the target | Stale action denied; resubmit |
-| Duplicate event | Same idempotency key and payload | Same logical change |
-| Interrupted worker | Restart during investigation/verification | Retry investigation or resume verification without duplicate application |
-
-### 6. Stop, back up and restore
-
-Press Ctrl+C. While stopped, copy the whole private `data` directory to protected storage. Do not copy only SQLite while the service writes: WAL state may be required. Restore while stopped and restart. Backups include tokens and evidence; encrypt and access-control them. Rotate tokens by editing protected config while stopped and restarting.
-
-A runtime lock prevents simultaneous owners. Stale locks from dead local processes are reconciled. When moving data across hosts/containers, first verify no instance is running before removing an obsolete `.lock` file. This is a single-host deployment, not a clustered database.
-
-## Local testing across operating systems
-
-The runtime uses Node.js built-ins and portable JavaScript: there are no Bash-only application scripts, native package builds or OS-specific database drivers. Use Node.js 24.x on a supported Windows, macOS or Linux host.
-
-| Environment | Shell and setup notes |
-|---|---|
-| Windows | PowerShell or Windows Terminal. Run the native quick-start commands unchanged. Allow loopback networking if endpoint security prompts; do not grant public-network access. Restrict config-file ACLs. |
-| macOS | Terminal with zsh or bash. Use a native Node.js 24 build for your Mac. Run the same commands; no Homebrew dependency is required by the application. |
-| Linux | Bash or another shell with Node.js 24 on PATH. Keep `data` private with directory mode 700 and config mode 600. |
-| WSL2 | Install Linux Node.js inside the distribution, clone under the Linux home directory, and run all commands there. Do not mix Windows Node with WSL dependencies or run the same database from both environments. |
-| Docker Desktop | Use Linux containers on Windows/macOS. Docker is optional for native local testing. On Linux verify bind-mount UID permissions as described below. |
-
-Native commands are identical in all four environments:
-
-```sh
-node tools/init.mjs
+```text
+node tools/assess.mjs
+node tools/assess.mjs path/to/reviewed-bundle.json
+node tools/smoke.mjs
 node --test test/*.test.mjs demo/*.test.mjs
 node tools/check-docs.mjs
-node src/server.mjs
+node tools/benchmark.mjs
 ```
 
-Keep the server terminal open. In a second terminal, from the same directory, run `node tools/smoke.mjs` to exercise submission, review, execution and verification. For repeated tests with an existing config, skip initialization. The test suite creates and removes only its own temporary test directories; it does not use your installation database.
+`assess.mjs` uses the operator from local configuration, submits the generated synthetic bundle when no file is given, and prints the complete result. `smoke.mjs` exercises independent approval and synthetic execution. Tests use explicit HTTP model doubles; they do not require downloaded weights and do not prove model quality. The application itself has no fake-model or deterministic-fallback switch.
 
-Environment-variable syntax differs by shell. Example alternate port:
+Import a reviewed Markdown/text directory with `node tools/ingest.mjs path/to/runbooks`. Set `CG_TOKEN` to the local admin token first. Windows PowerShell uses `$env:CG_TOKEN='...'`; Bash/zsh uses `export CG_TOKEN='...'`. The importer excludes hidden paths, symlinks and common generated directories; it imports at most 50 files with a seven-day expiry. Inspect files before ingesting; no automatic sensitive-data detector is provided.
 
-```powershell
-# Windows PowerShell
-$env:CG_PORT = '4311'
-node src/server.mjs
-```
+### OS-specific details and upgrades
 
-```sh
-# macOS, Linux and WSL shells
-CG_PORT=4311 node src/server.mjs
-```
+- **Windows:** restrict the `data` directory ACL to your account. PowerShell execution-policy changes are unnecessary; invoke Node directly. Use quoted paths containing spaces.
+- **macOS/Linux:** protect `data` using your normal filesystem permissions. Native mode avoids container bind-mount ownership issues.
+- **WSL:** run Node and Ollama in the same WSL environment for the simplest loopback setup. Windows-host Ollama is not automatically reachable through WSL loopback in every networking mode. Explicitly configure and protect any cross-environment endpoint. Never share an active SQLite database between Windows and WSL processes.
+- **Existing v0.1 installation:** stop the server and back up `data`. Run `node tools/init.mjs --configure-local-model` once to add model settings while preserving credentials and creating a config backup. Existing configured model settings are not overwritten. SQLite indexes/cache tables migrate at startup. Old pool approvals fail the new policy-version check; resubmit them for fresh investigation.
+- Use `CG_PORT`/`CG_HOST` for the application listener, `CG_CONFIG`/`CG_DB` for alternative files, and `CG_URL` for CLI clients. Defaults bind locally. Do not expose this evaluation server to an untrusted network.
+- To use another local Ollama port, set `CG_MODEL_BASE` before starting the server. This is a privileged operator setting that explicitly trusts that exact origin for model HTTP; never derive it from uploaded content.
 
-Set `CG_URL` to the matching URL when running the smoke test against an alternate port. WSL localhost forwarding depends on Windows/WSL networking configuration; try the browser inside the distribution or repair localhost forwarding before changing the bind address. Do not expose bearer-token HTTP traffic broadly as a workaround.
+## Evidence bundle contract
 
-The CI matrix tests native Windows, macOS and Ubuntu; Linux container testing is separate. These tests do not certify every OS version, CPU architecture, filesystem or endpoint-security product. Direct WSL verification is listed separately in the evidence report.
+[The executable example generator](examples/incident-bundle.mjs) is the reference. `GET /api/example-bundle` returns a fresh synthetic example after authentication.
 
-## Docker Compose setup details
+| Field | Required data and bounds |
+|---|---|
+| `capturedAt`, `source` | Valid timestamp within 24 hours; source reference up to 300 characters |
+| `services` | 1–80 unique IDs, owner, `critical` or `standard` tier, resolved `dependsOn` IDs |
+| `signals` | 1–120 unique IDs; known service; metric, before, after, limit and observed timestamp |
+| `deployments` | Up to 80 unique records; service, revision, description, time, rollback flag and tested timestamp/null |
+| Metrics | `error_rate`, `latency_p95_ms`, `saturation`, `queue_depth`, `availability`, `replication_lag_s`, `certificate_days` |
+| Units | Rates are 0–1 fractions; latency milliseconds; lag seconds; certificate lifetime days; queue depth count |
+| Time validity | Signals/deployments must be no later than capture and within its previous 24 hours |
 
-Docker Engine/Desktop and Compose are required. Initialize config once, then:
+Unknown fields are removed before model use. Freshness and source digests are rechecked after inference. Runbooks have 1–720 hour TTLs; retrieval uses up to 512 chunks of 900 characters and returns five fused-ranked chunks. A bundle can satisfy schema limits but still exceed the smaller model context budget: reduce scope if held. No arbitrary model-requested tool arguments are accepted.
 
-```sh
-node tools/init.mjs
-docker compose up --build -d
-docker compose ps
-docker compose logs --tail=50
-```
+## Free models and paid alternatives
 
-If config exists, skip initialization. On Linux, ensure the project data directory is writable by container UID/GID 1000:
+The default is **Qwen3 4B** for bounded structured planning/synthesis/review and **Qwen3-Embedding 0.6B** for retrieval. This is a practical local profile, not a claim that a 4B model is universally best. Qwen3's open-weight models use Apache 2.0; review each downloaded model's license and deployment constraints. [Qwen3 project](https://github.com/QwenLM/Qwen3), [reasoning model](https://ollama.com/library/qwen3:4b), [embedding model](https://ollama.com/library/qwen3-embedding:0.6b).
 
-```sh
-sudo chown -R 1000:1000 ./data
-sudo chmod 700 ./data
-sudo chmod 600 ./data/config.json
-```
+| Profile | Model/provider option | Trade-off and status |
+|---|---|---|
+| Default local | Ollama `qwen3:4b` + `qwen3-embedding:0.6b` | No hosted API bill; CPU inference can take minutes; real-model results recorded in verification |
+| Larger local | Qwen3 8B or 14B with the same embedding model | More memory/compute; evaluate your own incident corpus before claiming improved quality; not benchmarked here |
+| Paid compatibility baseline | OpenAI GPT-4.1 mini + text-embedding-3-small | Documented chat/embedding APIs; no paid calls used in this release's QA |
+| Managed open-weight inference | Together AI or Fireworks AI | Choose a currently available model with JSON-output support and a compatible embedding endpoint; model IDs, costs and behavior vary; not live-tested here |
+| Different native APIs | Providers requiring another request/authentication shape | Require a provider adapter and contract tests; not a drop-in integration merely because they serve an LLM |
 
-Apply these commands only to this dedicated project data directory. The service binds to loopback; do not expose its default HTTP listener directly to the Internet. Shared access requires a separately reviewed TLS reverse proxy, network controls and identity design. `docker compose down` stops the container without removing bind-mounted data.
+Paid providers can reduce local hardware requirements; they introduce network latency, per-token cost, availability dependencies and data-governance obligations. Sending an incident bundle externally requires your organization's approval. Current provider compatibility and catalogs are documented by [OpenAI GPT-4.1 mini](https://developers.openai.com/api/docs/models/gpt-4.1-mini), [OpenAI embeddings](https://developers.openai.com/api/docs/guides/embeddings), [Together](https://docs.together.ai/docs/inference/openai-compatibility) and [Fireworks](https://docs.fireworks.ai/tools-sdks/openai-compatibility). These are alternatives, not a universal quality ranking.
 
-[VERIFICATION.md](VERIFICATION.md) distinguishes local test results from container CI results. A Dockerfile alone is not proof of successful deployment.
-
-## Ingest reviewed operational knowledge
-
-Use the dashboard Evidence library, or import a reviewed folder. The importer reads only Markdown/text, skips symlinks/hidden/vendor directories, caps individual files at 50 KB and limits each batch to 50 files. It never executes repository code.
-
-PowerShell:
-
-```powershell
-$env:CG_TOKEN = (Get-Content data/config.json -Raw | ConvertFrom-Json).users[0].token
-node tools/ingest.mjs ./examples/runbooks
-Remove-Item Env:CG_TOKEN
-```
-
-The included [synthetic runbook](examples/runbooks/connection-pools.md) lets you test ingestion immediately; substitute your own reviewed directory later. For other shells, set `CG_TOKEN` through a private prompt or secret manager and run the same importer. Set `CG_URL` for another instance; remote URLs require HTTPS. Relative file paths become citations, and reimport updates matching paths. Imported records expire after seven days. The API supports replacement and deletion.
-
-**Deletion withdraws a document from future retrieval and invalidates pending execution; historical investigation snapshots remain in the database.** This is not a full personal-data erasure implementation. Do not ingest regulated records.
-
-## Optional LLM-backed retrieval and generation
-
-Without an endpoint the workflow uses deterministic analysis with cited retrieval. To enable generated hypotheses, add this object to the protected config while preserving its `users` array:
+For a chat-completions-compatible provider, replace only `llm` in your private config; preserve `users`:
 
 ```json
 {
-  "llm": {
-    "url": "https://your-approved-provider.example/v1/chat/completions",
-    "model": "your-approved-model"
-  }
+  "provider": "openai-compatible",
+  "url": "https://api.openai.com/v1/chat/completions",
+  "model": "gpt-4.1-mini",
+  "embeddingUrl": "https://api.openai.com/v1/embeddings",
+  "embeddingModel": "text-embedding-3-small",
+  "timeoutMs": 120000
 }
 ```
 
-Supply `CG_LLM_API_KEY` if the provider needs authentication, then restart. A protected `llm.apiKey` config field is also supported. Docker requires explicit environment forwarding in a private Compose override or approved secret injection; the default Compose file does not forward host variables.
+Set `CG_LLM_API_KEY` in the server environment; do not commit it. This adapter sends temperature, a completion-token cap and JSON-object response format. Models with incompatible parameters or native-only APIs require code changes. Both endpoints currently share the same API key, so use a compatible pair from the same approved provider. Clear any `CG_MODEL_BASE` override when switching away from Ollama. Provider responses still pass the same local validators and action boundaries.
 
-The endpoint must implement chat-completions-compatible JSON. Requests contain change fields and retrieved runbook excerpts: use only provider-approved data. HTTPS is required except for a local loopback model. Calls time out after 15 seconds; redirects are rejected; response size and citations are validated. Failures fall back to deterministic analysis. The adapter is tested with HTTP test doubles; no hosted-model accuracy result is claimed.
+Ollama uses its native [chat](https://docs.ollama.com/api/chat) and [embedding](https://docs.ollama.com/api/embed) endpoints. Embeddings are cached locally; changing the provider/model identity changes the cache key. Document edits/deletions invalidate tenant cache entries. Changing a model's underlying weights without changing its configured identity requires re-ingestion to avoid stale vectors.
 
-## API reference
+## Performance: why no Java/Python rewrite?
 
-Use `Authorization: Bearer <token>` on every `/api` call and `Content-Type: application/json` for JSON bodies. Tenant scope derives from the token.
+The current hot path is model inference plus evidence handling, not business-logic arithmetic. Retaining the asynchronous Node control plane avoids an unsupported rewrite while separating model compute into Ollama. Java is a strong candidate for a future high-throughput, CPU-heavy control plane; Python is useful for an ML evaluation/training service. Neither language makes the same external model intrinsically faster.
 
-| Route | Required role | Purpose |
-|---|---|---|
-| GET /healthz, /readyz | Public minimal response | Process and database readiness |
-| GET /api/me | Authenticated | Identity and roles |
-| GET /api/changes | Authenticated | Latest 200 tenant changes |
-| POST /api/changes | Operator | Submit with an `Idempotency-Key` header |
-| GET /api/changes/{id} | Authenticated | State, evidence and receipts |
-| POST /api/changes/{id}/approve | Approver | Independent approval |
-| POST /api/changes/{id}/execute | Operator | Rechecked fixture execution |
-| POST /api/changes/{id}/cancel | Operator | Cancel eligible pending work |
-| GET /api/target | Authenticated | Target revision and configuration |
-| GET /api/documents | Authenticated | Tenant evidence library |
-| POST /api/documents | Admin | Ingest/replace runbook |
-| DELETE /api/documents/{id} | Admin | Withdraw runbook |
-| GET /api/audit | Authenticated | Tenant evidence export |
+Java virtual threads address concurrency/throughput rather than making an individual model response faster. Conventional GIL-enabled CPython has CPU-threading constraints; native ML libraries, processes and free-threaded builds change that picture. There is no apples-to-apples Java/Python benchmark in this repository. [Java guidance](https://docs.oracle.com/en/java/javase/26/core/virtual-threads.html), [Python threading guidance](https://docs.python.org/3.13/library/threading.html).
 
-Example change body:
+Implemented optimizations: indexed pending-job lookup/counting, no repeated completed-history deserialization, per-tenant serialization with bounded cross-tenant concurrency, batched embeddings, a persistent tenant-scoped vector cache, single-pass lexical statistics and lightweight dashboard summaries. No result cache hides changed source evidence.
 
-```json
-{
-  "title": "Increase checkout concurrency",
-  "sector": "retail",
-  "replicas": 3,
-  "poolPerReplica": 20,
-  "capacityBudget": 120,
-  "evidenceFresh": true,
-  "rollbackTested": true
-}
+On an Intel i7-1270P Windows host, Node 24.19.0, 20,000 completed records in in-memory SQLite: indexed idle-poll p95 **0.0217 ms** over 1,000 samples versus **129.7007 ms** for the legacy full scan over 25 samples. This is a reproducible microbenchmark, not an HTTP SLO, production capacity claim or model-latency benchmark. Run `node tools/benchmark.mjs` on your hardware. Local authenticated summary requests measured **29.99 ms p95** over 100 sequential requests; the final real Qwen CPU investigation took **108.8 seconds**. Faster inference requires a suitable accelerator, different model/serving profile or evaluated hosted provider—not simply a Java/Python rewrite. Full methodology and limits are in [VERIFICATION.md](VERIFICATION.md).
+
+## Container deployment
+
+With Docker Engine or Docker Desktop using Linux containers, first run `node tools/init.mjs` on the host. Then:
+
+```text
+docker compose -f compose.yaml -f compose.models.yaml up --build -d
+docker compose -f compose.yaml -f compose.models.yaml exec ollama ollama pull qwen3:4b
+docker compose -f compose.yaml -f compose.models.yaml exec ollama ollama pull qwen3-embedding:0.6b
+node tools/assess.mjs
+docker compose -f compose.yaml -f compose.models.yaml logs --tail=100
+docker compose -f compose.yaml -f compose.models.yaml down
 ```
 
-Limits: 100 KB request body, 100 runbooks/tenant, 20 pending jobs/tenant and 240 API requests/identity/minute. Maximum replicas: 32; pool/replica: 128; capacity: 4096. A 429 means pause and retry later.
+The model container has no published host port. The app is non-root, read-only except its data mount/tmpfs, drops capabilities and binds the host API to loopback. Model memory is separate from the application's 512 MB container cap. Linux bind mounts must allow UID 1000 to write `data`; adjust that specific directory's ownership for your environment, not the repository root. Back up credentials and data before changes. `compose.ci.yaml` is a clearly labeled protocol-double test configuration, **not** the model deployment configuration.
 
-## Security, safety and compliance
+GPU acceleration is not automatically configured by this Compose file. Configure a suitable runtime/device mapping for your OS and hardware if needed. Local CPU deployment remains functional but is not advertised as low-latency inference.
 
-- No arbitrary shell commands, untrusted builds or production access.
-- Tokens stay in browser memory; untrusted strings render as text with a restrictive content-security policy.
-- Approval and execution are separate operations. Evidence withdrawal, expiry and drift are rechecked before dispatch.
-- Local audit hashes are not an independently immutable service; a privileged administrator could rewrite the database. Export to independently protected storage when stronger assurance is required.
-- Tenant members share read access. Fine-grained source ACLs, OIDC/SSO, automated retention, external immutable audit and multi-region hosting are future work.
-- Do not submit patient records, cardholder data or regulated customer records. Industry labels are not certifications. See [HHS cloud guidance](https://www.hhs.gov/hipaa/for-professionals/special-topics/health-information-technology/cloud-computing/index.html), [PCI SSC](https://www.pcisecuritystandards.org/document_library/) and [NIST AI RMF](https://www.nist.gov/itl/ai-risk-management-framework) for organizational assessment references.
+## API and operations
 
-## Tests and written evidence
+All `/api/*` endpoints require a configured bearer identity. Tenant scope is derived from that identity, never a request field. Mutations are role-gated; requests are limited to 100 KB and 240 calls/minute per authenticated identity. Use `Idempotency-Key` (8–100 safe characters) for submission.
 
-```sh
-node --test test/*.test.mjs demo/*.test.mjs
-node tools/check-docs.mjs
-```
-
-Tests run real HTTP servers, fixture subprocesses and temporary SQLite databases. They cover the complete workflow, tenancy, authorization, malformed requests, idempotency, approval expiry/tampering, evidence withdrawal, drift, rollback, restart recovery and model citation validation. Executed checks, bug fixes and limitations are recorded in [VERIFICATION.md](VERIFICATION.md).
-
-## Troubleshooting
-
-| Symptom | Resolution |
+| Endpoint | Behavior |
 |---|---|
-| Missing config | Run initialization once from the project root |
-| `node:sqlite` unavailable | Use Node.js 24.x |
-| Cannot approve | Use a separate reviewer identity on a REVIEW change |
-| HELD or target drift | Inspect the reason; correct inputs/evidence and submit a new change |
-| Model fallback warning | Check endpoint, model, credentials and citation response format |
-| Docker permission denied | Check UID 1000 access to the project's data directory |
-| Port occupied | Set `CG_PORT` for native mode or adjust Compose mapping |
-| Database already owned | Stop the existing process; do not run multiple replicas |
+| `GET /healthz`, `GET /readyz` | Process and database readiness; **not** model readiness |
+| `GET /api/me` | Identity, roles and whether a model URL is configured |
+| `POST /api/changes` | Submit `kind: assessment` with title/sector/bundle, or a synthetic pool proposal |
+| `GET /api/changes` | Latest 200 lightweight tenant job summaries |
+| `GET /api/changes/:id` | Complete persisted investigation and receipts |
+| `POST /api/changes/:id/approve` | Independent approver; synthetic `REVIEW` jobs only |
+| `POST /api/changes/:id/execute` | Operator; approved synthetic action only |
+| `POST /api/changes/:id/cancel` | Cancel allowed non-running states |
+| `GET/POST /api/documents` | List metadata / ingest reviewed evidence as an admin |
+| `DELETE /api/documents/:id` | Withdraw source and invalidate cached embeddings/future execution |
+| `GET /api/audit` | Tenant's hash-linked event history |
 
-## Roadmap and ownership
+Inspect persisted `HELD` reasons and model-server logs when inference fails. No unbounded retry loop occurs. An interrupted investigation restarts from its beginning after server recovery; read-only inference may be repeated. Synthetic verification resumes without applying an action twice. Stop cleanly with Ctrl+C before copying the **entire** `data` directory, including any SQLite WAL/SHM files; test restoring the copy separately. Do not delete a lock file while its owning process is alive.
 
-The documents under `docs/` remain future architecture studies, not the deployment guide. Next work is read-only telemetry connectors, independently validated service models, source-level ACLs and a separately reviewed production action broker. Those capabilities are not included in this release.
+Evidence deletion prevents future use but does **not** erase snapshots already saved in investigations. There is no automated retention/erasure service. Audit history and accumulated jobs need operational retention planning; never describe this as a complete privacy-compliance implementation.
 
-Third-party components retain their licenses. A redistribution license for this new repository has not yet been selected; public visibility alone does not grant an open-source license.
+## Verification and production-readiness limits
+
+See [VERIFICATION.md](VERIFICATION.md) for reproduced defects, repairs, test commands, actual model checks and platform evidence. The [CI workflow](.github/workflows/validate.yml) runs native Windows/Linux/macOS tests plus container protocol workflows. Passing protocol tests is not a hallucination-rate, safety-certification or production-scale evaluation.
+
+Before enterprise deployment, implement and validate SSO/OIDC, centralized secrets and encryption, TLS ingress, immutable external audit, tenant/data-retention controls, durable distributed workers/leases, HA storage, representative load and model-quality evaluations, backup/restore objectives, telemetry integration, security review and operational ownership. Live cloud/Kubernetes/observability connectors and production write adapters are not included. The numbered [architecture reference documents](docs/01-product.md) describe future design direction; this README and executable code define the current contract.
+
+Public source availability does not automatically grant an open-source license. This repository has no project-wide license grant yet; model licenses remain separate. Do not infer production adoption, certifications or a service guarantee from this reference implementation.

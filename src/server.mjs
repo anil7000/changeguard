@@ -6,6 +6,7 @@ import { createHash, timingSafeEqual } from 'node:crypto';
 import { Store, digest, now, uid } from './store.mjs';
 import { Engine, fail } from './engine.mjs';
 import { acquireLock } from './lock.mjs';
+import { incidentBundle } from '../examples/incident-bundle.mjs';
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const assets = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
@@ -54,17 +55,18 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
   const server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url, 'http://localhost').pathname;
-      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.1.0' });
+      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.2.0' });
       if (req.method === 'GET' && path === '/readyz') { store.db.prepare('SELECT 1').get(); return json(res, 200, { status: 'ready', adapter: 'synthetic-http-pool' }); }
       if (req.method === 'GET' && assets[path]) { const [name, type] = assets[path]; res.writeHead(200, { ...secureHeaders, 'content-type': `${type}; charset=utf-8` }); return res.end(readFileSync(resolve(publicDir, name))); }
       if (!path.startsWith('/api/')) fail(404, 'Not found');
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) fail(403, 'Cross-origin request rejected');
       const user = authenticate(req);
       if (req.method === 'GET' && path === '/api/me') return json(res, 200, { id: user.id, tenant: user.tenant, roles: user.roles, llmConfigured: Boolean(config.llm?.url) });
-      if (req.method === 'GET' && path === '/api/changes') return json(res, 200, store.list(user.tenant));
+      if (req.method === 'GET' && path === '/api/example-bundle') return json(res, 200, incidentBundle());
+      if (req.method === 'GET' && path === '/api/changes') return json(res, 200, store.summaries(user.tenant));
       if (req.method === 'GET' && path === '/api/target') return json(res, 200, store.target(user.tenant));
       if (req.method === 'GET' && path === '/api/audit') return json(res, 200, store.events(user.tenant));
-      if (req.method === 'GET' && path === '/api/documents') return json(res, 200, store.docs(user.tenant));
+      if (req.method === 'GET' && path === '/api/documents') return json(res, 200, store.documentSummaries(user.tenant));
       if (req.method === 'POST' && path === '/api/changes') { role(user, 'operator'); return json(res, 201, engine.submit(user, await body(req), req.headers['idempotency-key'])); }
       if (req.method === 'POST' && path === '/api/documents') {
         role(user, 'admin'); const data = await body(req);
@@ -103,6 +105,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     const configPath = resolve(process.env.CG_CONFIG ?? 'data/config.json');
     const config = JSON.parse(readFileSync(configPath, 'utf8'));
+    if (process.env.CG_MODEL_BASE) { const base = new URL(process.env.CG_MODEL_BASE).origin; config.llm = { ...config.llm, provider: 'ollama', url: base+'/api/chat', embeddingUrl: base+'/api/embed', trustedLocalOrigin: base }; }
     if (config.llm && process.env.CG_LLM_API_KEY) config.llm.apiKey = process.env.CG_LLM_API_KEY;
     const app = await start({ config, dbPath: process.env.CG_DB ?? 'data/changeguard.sqlite', host: process.env.CG_HOST ?? '127.0.0.1', port: Number(process.env.CG_PORT ?? 4310) });
     console.log(`ChangeGuard ready at ${app.url}; execution adapter: synthetic-http-pool`);

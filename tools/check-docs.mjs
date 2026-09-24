@@ -2,7 +2,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const files = ['README.md', 'VERIFICATION.md', 'examples/runbooks/connection-pools.md', ...readdirSync(resolve(root, 'docs')).filter(x => x.endsWith('.md')).map(x => `docs/${x}`)];
+const files = ['README.md', 'VERIFICATION.md', ...readdirSync(resolve(root, 'examples/runbooks')).filter(x => x.endsWith('.md')).map(x => `examples/runbooks/${x}`), ...readdirSync(resolve(root, 'docs')).filter(x => x.endsWith('.md')).map(x => `docs/${x}`)];
 let diagrams = 0;
 for (const file of files) {
   const content = readFileSync(resolve(root, file), 'utf8');

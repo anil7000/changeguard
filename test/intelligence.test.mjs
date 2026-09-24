@@ -16,11 +16,11 @@ test('configured model receives retrieved evidence and returns validated citatio
   const result = await propose({ title: 'Pool change' }, retrieve([doc], 'database'), { llm: { url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, model: 'test-double' } });
   assert.equal(result.provider, 'configured-model'); assert.ok(captured.messages[1].content.includes('r1'));
 });
-test('fabricated model citations cause deterministic fallback', async t => {
+test('fabricated model citations fail closed', async t => {
   const server = createServer((req, res) => res.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: 'Claim', hypotheses: [{ claim: 'Unknown evidence', citations: ['fake'] }] }) } }] })));
   await new Promise(r => server.listen(0, '127.0.0.1', r)); t.after(() => new Promise(r => server.close(r)));
-  const result = await propose({}, [doc], { llm: { url: `http://127.0.0.1:${server.address().port}/v1/chat/completions` } }); assert.equal(result.provider, 'deterministic'); assert.ok(result.warning);
+  await assert.rejects(propose({}, [doc], { llm: { url: `http://127.0.0.1:${server.address().port}/v1/chat/completions`, model: 'test-double' } }), /citation/);
 });
 test('remote unencrypted model endpoints are rejected', async () => {
-  await assert.rejects(propose({}, [], { llm: { url: 'http://example.com/api' } }), /HTTPS/);
+  await assert.rejects(propose({}, [], { llm: { url: 'http://example.com/api', model: 'test-double' } }), /HTTPS/);
 });

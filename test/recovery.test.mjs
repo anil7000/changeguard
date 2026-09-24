@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { start } from '../src/server.mjs';
 import { Store, digest } from '../src/store.mjs';
+import { modelFixture } from './model-fixture.mjs';
 
 const config = { users: [{ id: 'engineer', tenant: 'a', token: 'engineer-token-32-characters-long-example', roles: ['operator', 'admin'] }, { id: 'reviewer', tenant: 'a', token: 'reviewer-token-32-characters-long-example', roles: ['approver'] }] };
 const valid = { title: 'Pool change', sector: 'saas', replicas: 2, poolPerReplica: 10, capacityBudget: 40, evidenceFresh: true, rollbackTested: true };
@@ -23,6 +24,7 @@ test('removed runbook stays removed after a restart', async t => {
   assert.equal(app.store.docs('a').length, 0);
 });
 test('recovery resumes verification without reapplying an action', async t => {
+  config.llm = (await modelFixture(t)).llm;
   const dir = mkdtempSync(join(tmpdir(), 'cg-resume-')); const dbPath = join(dir, 'db.sqlite');
   let app = await start({ config, dbPath, interval: 60000 });
   t.after(async () => { await app.close(); rmSync(dir, { force: true, recursive: true }); });
@@ -34,6 +36,7 @@ test('recovery resumes verification without reapplying an action', async t => {
   assert.equal(app.store.change('a', c.id).state, 'COMPLETED'); assert.equal(app.store.target('a').revision, 2);
 });
 test('failed postcondition restores only the synthetic fixture', async t => {
+  config.llm = (await modelFixture(t)).llm;
   const dir = mkdtempSync(join(tmpdir(), 'cg-rollback-')); const dbPath = join(dir, 'db.sqlite');
   const app = await start({ config, dbPath, interval: 60000 });
   t.after(async () => { await app.close(); rmSync(dir, { force: true, recursive: true }); });

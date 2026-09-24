@@ -28,7 +28,7 @@ jobs:
           node-version: '24'
       - run: node tools/init.mjs
       - run: sudo chown -R 1000:1000 data
-      - run: docker compose up --build -d
+      - run: docker compose -f compose.yaml -f compose.ci.yaml up --build -d
       - name: Wait for readiness
         run: |
           for attempt in $(seq 1 40); do
@@ -39,9 +39,11 @@ jobs:
           exit 1
       - name: End-to-end container workflow
         run: sudo env PATH="$PATH" node tools/smoke.mjs
+      - name: Agentic protocol workflow (test double, not real-model quality)
+        run: sudo env PATH="$PATH" node tools/assess.mjs
       - name: Container test suite
         run: docker compose exec -T changeguard node --test 'test/*.test.mjs' 'demo/*.test.mjs'
       - if: always()
         run: docker compose logs --tail=100
       - if: always()
-        run: docker compose down
+        run: docker compose -f compose.yaml -f compose.ci.yaml down

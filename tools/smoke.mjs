@@ -12,11 +12,11 @@ async function request(path, user, method = 'GET', data) {
   const body = await response.json(); if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.error}`); return body;
 }
 async function wait(id, desired) {
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 300; i++) {
     const c = await request(`/api/changes/${id}`, engineer);
     if (c.state === desired) return c;
     if (['BLOCKED', 'HELD', 'ROLLED_BACK', 'CANCELLED'].includes(c.state)) throw new Error(`Unexpected ${c.state}: ${c.reason}`);
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1500));
   }
   throw new Error(`Timed out waiting for ${desired}`);
 }
