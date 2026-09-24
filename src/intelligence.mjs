@@ -12,8 +12,8 @@ function lexical(corpus, query) {
 }
 export function retrieve(documents, query, clock = Date.now()) { return lexical(chunks(documents,clock), query).filter(c => c.score > 0).sort((a,b) => b.score-a.score).slice(0,5); }
 const cosine = (a,b) => a.reduce((s,n,i) => s+n*b[i],0) / (Math.hypot(...a)*Math.hypot(...b));
-export async function hybridRetrieve(store, tenant, query, config) {
-  const corpus = chunks(store.docs(tenant));
+export async function hybridRetrieve(store, tenant, query, config, { documentIds } = {}) {
+  const corpus = chunks(store.docs(tenant).filter(d=>!documentIds || documentIds.includes(d.id)));
   if (!corpus.length) throw new ModelError('No fresh evidence available for required RAG');
   if (corpus.length > 512) throw new ModelError('RAG corpus exceeds 512 chunks; split the evidence scope');
   const model = digest({ url: config.llm?.embeddingUrl, model: config.llm?.embeddingModel });

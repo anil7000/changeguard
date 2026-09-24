@@ -29,7 +29,9 @@ External inference transmits operational evidence. Obtain organizational approva
 
 ## Grounding and limits
 
-Three bounded reasoning passes plan, synthesize and review. Typed tools perform dependency traversal, telemetry comparison, temporal change correlation and recovery evidence checks. Retrieval combines dense similarity and lexical ranking using reciprocal-rank fusion.
+Cross-system workflows use two model passes: investigation of a fixed plan against observations/procedures, then a separate eligibility review including the engine's guard, compensation and verification contract. Only binding-selected procedure IDs enter its RAG corpus. Typed deterministic orchestration performs reads/writes; models cannot edit plans.
+
+Supporting telemetry investigations retain three passes: plan, synthesize and review, with typed dependency, telemetry, change-correlation and recovery tools. Both paths combine dense similarity and lexical ranking using reciprocal-rank fusion. Review uses the same configured model and may share its biases; a separate pass is not independent scientific validation.
 
 Hypotheses need valid tool and runbook citations. Dependency paths and structured fields are validated. The summary uses calculated facts; findings remain unverified hypotheses. The reviewer uses the same model and can share its biases. These safeguards do not establish causality or eliminate hallucinations.
 

@@ -1,0 +1,31 @@
+services:
+  changeguard:
+    build: .
+    init: true
+    command: ["node", "tools/reference.mjs"]
+    environment:
+      CG_HOST: 0.0.0.0
+      CG_PORT: 4315
+      CG_MODEL_BASE: http://ollama:11434
+    ports:
+      - "127.0.0.1:4315:4315"
+    volumes:
+      - ./data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 96
+    mem_limit: 512m
+    depends_on: [ollama]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4315/readyz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    restart: unless-stopped
+  ollama:
+    image: ollama/ollama:0.34.4
+    volumes:
+      - reference-models:/root/.ollama
+    restart: unless-stopped
+volumes:
+  reference-models:

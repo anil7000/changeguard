@@ -1,5 +1,11 @@
 # Operating ChangeGuard
 
+The primary workspace at `/` manages cross-system recovery; telemetry investigations move to `/investigations`. See the [workflow contract](workflows.md) for packs, bindings, initiators, schedules and notification receivers. The reference launcher uses port 4315 and `data/reference`; normal installations use port 4310.
+
+Workflow limits: 20 nonterminal records per tenant including held/review work, two concurrent tenant workers and serialization within each tenant. Transient adapter failures retry at most three times with persistent backoff. Five notification failures leave a failed outbox record. These are bounded local defaults, not production throughput claims.
+
+`workflowPaused` controls cross-system workers; `automationPaused` controls telemetry collection. Disable individual bindings through host configuration and restart. Policy changes invalidate old plans. Review held effects before revoking authority because that may intentionally prevent automatic compensation.
+
 ## Service ownership
 
 Run one application process per SQLite database. A filesystem process lock enforces exclusive ownership. Use a protected persistent local disk, not a database concurrently shared between containers, hosts or Windows/WSL instances. Containers run without root, with dropped capabilities and a read-only filesystem except data/tmp.

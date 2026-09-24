@@ -25,12 +25,32 @@ export class Store {
       CREATE INDEX IF NOT EXISTS collection_state ON collection_jobs(json_extract(body,'$.state'),tenant);
       CREATE TABLE IF NOT EXISTS deployment_events(tenant TEXT NOT NULL,environment TEXT NOT NULL,id TEXT NOT NULL,body TEXT NOT NULL,PRIMARY KEY(tenant,environment,id));
       INSERT OR IGNORE INTO schema_version VALUES(3);`);
+    this.db.exec(`CREATE TABLE IF NOT EXISTS workflows(id TEXT PRIMARY KEY,tenant TEXT NOT NULL,idem TEXT NOT NULL,request_hash TEXT NOT NULL,body TEXT NOT NULL,UNIQUE(tenant,idem));
+      CREATE TABLE IF NOT EXISTS workflow_locks(tenant TEXT NOT NULL,resource TEXT NOT NULL,workflow TEXT NOT NULL,PRIMARY KEY(tenant,resource));
+      CREATE TABLE IF NOT EXISTS workflow_outbox(id TEXT PRIMARY KEY,tenant TEXT NOT NULL,body TEXT NOT NULL);
+      CREATE INDEX IF NOT EXISTS workflow_state ON workflows(json_extract(body,'$.state'),tenant);
+      INSERT OR IGNORE INTO schema_version VALUES(4);`);
   }
   transaction(fn) {
     this.db.exec('BEGIN IMMEDIATE');
     try { const result = fn(); this.db.exec('COMMIT'); return result; }
     catch (error) { this.db.exec('ROLLBACK'); throw error; }
   }
+  workflow(tenant,id) { const r=this.db.prepare('SELECT body FROM workflows WHERE tenant=? AND id=?').get(tenant,id);return r?JSON.parse(r.body):null; }
+  workflowKey(tenant,key) { return this.db.prepare('SELECT id,request_hash FROM workflows WHERE tenant=? AND idem=?').get(tenant,key); }
+  workflowEvent(tenant,input) { return this.db.prepare("SELECT id,request_hash FROM workflows WHERE tenant=? AND json_extract(body,'$.binding')=? AND json_extract(body,'$.source')=? AND json_extract(body,'$.externalId')=?").get(tenant,input.binding,input.source,input.externalId); }
+  workflows(tenant) { return this.db.prepare('SELECT body FROM workflows WHERE tenant=? ORDER BY rowid DESC LIMIT 200').all(tenant).map(r=>JSON.parse(r.body)); }
+  workflowSummaries(tenant) { return this.db.prepare("SELECT json_remove(body,'$.snapshots','$.evidence','$.analysis','$.review','$.plan','$.receipts','$.compensations','$.verification','$.trace','$.intent','$.approval') AS body FROM workflows WHERE tenant=? ORDER BY rowid DESC LIMIT 200").all(tenant).map(r=>JSON.parse(r.body)); }
+  workflowActive(tenant,binding,resource) { return Boolean(this.db.prepare("SELECT 1 FROM workflows WHERE tenant=? AND json_extract(body,'$.binding')=? AND json_extract(body,'$.resource')=? AND json_extract(body,'$.state') NOT IN ('COMPLETED','COMPENSATED','CANCELLED') LIMIT 1").get(tenant,binding,resource)); }
+  workflowPending() { return this.db.prepare("SELECT body FROM workflows WHERE json_extract(body,'$.state') IN ('QUEUED','INVESTIGATING','EXECUTING','VERIFYING','COMPENSATING') AND (json_extract(body,'$.retryAt') IS NULL OR json_extract(body,'$.retryAt')<=?) ORDER BY rowid").all(now()).map(r=>JSON.parse(r.body)); }
+  workflowCount(tenant) { return this.db.prepare("SELECT count(*) AS n FROM workflows WHERE tenant=? AND json_extract(body,'$.state') NOT IN ('COMPLETED','COMPENSATED','CANCELLED')").get(tenant).n; }
+  insertWorkflow(c,key,hash) { this.db.prepare('INSERT INTO workflows VALUES(?,?,?,?,?)').run(c.id,c.tenant,key,hash,JSON.stringify(c)); }
+  saveWorkflow(c) { c.updatedAt=now();this.db.prepare('UPDATE workflows SET body=? WHERE tenant=? AND id=?').run(JSON.stringify(c),c.tenant,c.id); }
+  lockWorkflow(c,resources) { for(const resource of resources){const owner=this.db.prepare('SELECT workflow FROM workflow_locks WHERE tenant=? AND resource=?').get(c.tenant,resource);if(owner && owner.workflow!==c.id)throw new Error('Resource is owned by another active workflow');this.db.prepare('INSERT OR IGNORE INTO workflow_locks VALUES(?,?,?)').run(c.tenant,resource,c.id);} }
+  unlockWorkflow(c) { this.db.prepare('DELETE FROM workflow_locks WHERE tenant=? AND workflow=?').run(c.tenant,c.id); }
+  putDelivery(d) { this.db.prepare('INSERT INTO workflow_outbox VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET body=excluded.body').run(d.id,d.tenant,JSON.stringify(d)); }
+  deliveries(tenant) { return this.db.prepare('SELECT body FROM workflow_outbox WHERE tenant=? ORDER BY rowid DESC LIMIT 100').all(tenant).map(r=>JSON.parse(r.body)); }
+  deliveryPending() { return this.db.prepare("SELECT body FROM workflow_outbox WHERE json_extract(body,'$.state')='PENDING' AND json_extract(body,'$.nextAt')<=? ORDER BY rowid LIMIT 20").all(now()).map(r=>JSON.parse(r.body)); }
   change(tenant, id) { const r = this.db.prepare('SELECT body FROM changes WHERE tenant=? AND id=?').get(tenant, id); return r ? JSON.parse(r.body) : null; }
   list(tenant) { return this.db.prepare('SELECT body FROM changes WHERE tenant=? ORDER BY rowid DESC LIMIT 200').all(tenant).map(r => JSON.parse(r.body)); }
   summaries(tenant) { return this.db.prepare(`SELECT json_object('id',id,'title',json_extract(body,'$.title'),'environment',json_extract(body,'$.environment'),'sector',json_extract(body,'$.sector'),'state',json_extract(body,'$.state'),'kind',json_extract(body,'$.kind'),'risk',json_extract(body,'$.risk'),'replicas',json_extract(body,'$.replicas'),'poolPerReplica',json_extract(body,'$.poolPerReplica'),'capacityBudget',json_extract(body,'$.capacityBudget'),'updatedAt',json_extract(body,'$.updatedAt')) AS body FROM changes WHERE tenant=? ORDER BY rowid DESC LIMIT 200`).all(tenant).map(r => JSON.parse(r.body)); }

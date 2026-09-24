@@ -6,7 +6,7 @@ COPY --chown=node:node public ./public
 COPY --chown=node:node tools ./tools
 COPY --chown=node:node docs ./docs
 COPY --chown=node:node examples ./examples
-COPY --chown=node:node VERIFICATION.md ./
+COPY --chown=node:node VERIFICATION.md SECURITY.md ./
 COPY --chown=node:node demo ./demo
 COPY --chown=node:node test ./test
 RUN mkdir /app/data && chown node:node /app/data

@@ -8,9 +8,10 @@ import { Engine, fail } from './engine.mjs';
 import { acquireLock } from './lock.mjs';
 import { incidentBundle } from '../examples/incident-bundle.mjs';
 import { Automation } from './automation.mjs';
+import { Workflows } from './workflows.mjs';
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
-const assets = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
+const assets = { '/': ['platform.html', 'text/html'], '/investigations': ['index.html', 'text/html'], '/platform.js': ['platform.js','text/javascript'], '/platform.css': ['platform.css','text/css'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
 const secureHeaders = {
   'content-security-policy': "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'cache-control': 'no-store'
@@ -36,8 +37,8 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
   checkConfig(config);
   mkdirSync(dirname(resolve(dbPath)), { recursive: true });
   const unlock = acquireLock(resolve(dbPath) + '.lock');
-  let store; let engine; let automation;
-  try { store = new Store(dbPath); engine = new Engine(store, config); engine.seed(new Set(config.users.map(u => u.tenant))); automation=new Automation(store,engine,config); }
+  let store; let engine; let automation; let workflows;
+  try { store = new Store(dbPath); engine = new Engine(store, config); engine.seed(new Set(config.users.map(u => u.tenant))); automation=new Automation(store,engine,config); workflows=new Workflows(store,config); }
   catch (error) { store?.close(); unlock(); throw error; }
   const hashes = config.users.map(u => ({ user: u, hash: createHash('sha256').update(u.token).digest() }));
   const buckets = new Map();
@@ -56,8 +57,8 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
   const server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url, 'http://localhost').pathname;
-      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.3.0' });
-      if (req.method === 'GET' && path === '/readyz') { store.db.prepare('SELECT 1').get(); return json(res, 200, { status: 'ready', adapter: 'synthetic-http-pool' }); }
+      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.4.0' });
+      if (req.method === 'GET' && path === '/readyz') { store.db.prepare('SELECT 1').get(); return json(res, 200, { status: 'ready', storage: 'sqlite', scope: 'Process and database only; external dependencies require validation' }); }
       if (req.method === 'GET' && assets[path]) { const [name, type] = assets[path]; res.writeHead(200, { ...secureHeaders, 'content-type': `${type}; charset=utf-8` }); return res.end(readFileSync(resolve(publicDir, name))); }
       if (!path.startsWith('/api/')) fail(404, 'Not found');
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) fail(403, 'Cross-origin request rejected');
@@ -65,12 +66,19 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
       if (req.method === 'GET' && path === '/api/me') return json(res, 200, { id: user.id, tenant: user.tenant, roles: user.roles, llmConfigured: Boolean(config.llm?.url) });
       if(user.roles.every(r=>r==='collector') && req.method==='GET')fail(403,'Collector identities cannot read investigation data');
       const ingestRole=()=>{if(!user.roles.some(r=>['operator','collector'].includes(r)))fail(403,'operator or collector role required');};
+      if(req.method==='GET' && path==='/api/workflow-catalog')return json(res,200,{packs:workflows.catalog(user.tenant),bindings:workflows.bindings(user.tenant),paused:Boolean(config.workflowPaused)});
+      if(req.method==='GET' && path==='/api/workflows')return json(res,200,store.workflowSummaries(user.tenant));
+      if(req.method==='GET' && path==='/api/workflow-deliveries')return json(res,200,store.deliveries(user.tenant).map(({endpoint,...d})=>d));
+      if(req.method==='POST' && path==='/api/workflows'){ingestRole();const c=workflows.submit(user,await body(req),req.headers['idempotency-key']);return json(res,202,user.roles.every(r=>r==='collector')?{id:c.id,state:c.state,externalId:c.externalId}:c);}
+      const workflowMatch=/^\/api\/workflows\/([a-zA-Z0-9-]+)(?:\/(approve|resume|cancel))?$/.exec(path);
+      if(workflowMatch && req.method==='GET' && !workflowMatch[2])return json(res,200,workflows.current(user,workflowMatch[1]));
+      if(workflowMatch && req.method==='POST' && workflowMatch[2])return json(res,200,workflows[workflowMatch[2]](user,workflowMatch[1]));
       if(req.method==='GET' && path==='/api/connections')return json(res,200,store.connections(user.tenant));
       if(req.method==='POST' && path==='/api/connections'){role(user,'admin');return json(res,201,automation.configure(user,await body(req)));}
       if(req.method==='GET' && path==='/api/collections')return json(res,200,store.collections(user.tenant));
       if(req.method==='GET' && path==='/api/operations'){
         const states=store.db.prepare("SELECT json_extract(body,'$.state') AS state,count(*) AS count FROM changes WHERE tenant=? GROUP BY state").all(user.tenant);
-        return json(res,200,{version:'0.3.0',automationPaused:Boolean(config.automationPaused),states,pendingAssessments:store.pendingCount(user.tenant),pendingCollections:store.collectionCount(user.tenant),limits:{pendingPerTenant:20,connections:20,queriesPerConnection:12},model:{configured:Boolean(config.llm?.url && config.llm?.embeddingUrl),model:config.llm?.model,embeddingModel:config.llm?.embeddingModel},capabilities:['prometheus','alertmanager-v4','evidence-push','deployment-events','scheduled-investigation']});
+        return json(res,200,{version:'0.4.0',automationPaused:Boolean(config.automationPaused),states,pendingAssessments:store.pendingCount(user.tenant),pendingCollections:store.collectionCount(user.tenant),limits:{pendingPerTenant:20,connections:20,queriesPerConnection:12},model:{configured:Boolean(config.llm?.url && config.llm?.embeddingUrl),model:config.llm?.model,embeddingModel:config.llm?.embeddingModel},capabilities:['cross-system-workflows','transaction-recovery','technology-recovery','access-reconciliation','prometheus','alertmanager-v4','evidence-push','deployment-events','scheduled-investigation']});
       }
       if(req.method==='GET' && path==='/api/access'){
         role(user,'admin');return json(res,200,{users:config.users.filter(u=>u.tenant===user.tenant).map(({id,roles})=>({id,roles})),origins:(config.connectorOrigins??[]).filter(c=>c.tenant===user.tenant).map(c=>c.origin)});
@@ -117,11 +125,11 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
     } catch (e) { if (!res.headersSent && !res.destroyed) json(res, e.status ?? 500, { error: e.status ? e.message : 'Internal error; action not confirmed' }); }
   });
   server.requestTimeout = 10000; server.headersTimeout = 10000;
-  const timer = setInterval(() => { engine.tick().catch(() => {}); try{automation.tick();}catch{ /* Persisted jobs remain available for the next tick. */ } }, interval);
+  const timer = setInterval(() => { engine.tick().catch(() => {}); try{automation.tick();workflows.tick();}catch{ /* Persisted jobs remain available for the next tick. */ } }, interval);
   try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); }); }
-  catch (error) { clearInterval(timer); await automation.stop(); await engine.stop(); store.close(); unlock(); throw error; }
+  catch (error) { clearInterval(timer); await automation.stop(); await workflows.stop(); await engine.stop(); store.close(); unlock(); throw error; }
   let closed = false;
-  return { server, store, engine, automation, url: `http://${host}:${server.address().port}`, async close() { if (closed) return; closed = true; clearInterval(timer); await new Promise(resolve => server.close(resolve)); await automation.stop(); await engine.stop(); store.close(); unlock(); } };
+  return { server, store, engine, automation, workflows, url: `http://${host}:${server.address().port}`, async close() { if (closed) return; closed = true; clearInterval(timer); await new Promise(resolve => server.close(resolve)); await automation.stop(); await workflows.stop(); await engine.stop(); store.close(); unlock(); } };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -131,7 +139,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     if (process.env.CG_MODEL_BASE) { const base = new URL(process.env.CG_MODEL_BASE).origin; config.llm = { ...config.llm, provider: 'ollama', url: base+'/api/chat', embeddingUrl: base+'/api/embed', trustedLocalOrigin: base }; }
     if (config.llm && process.env.CG_LLM_API_KEY) config.llm.apiKey = process.env.CG_LLM_API_KEY;
     const app = await start({ config, dbPath: process.env.CG_DB ?? 'data/changeguard.sqlite', host: process.env.CG_HOST ?? '127.0.0.1', port: Number(process.env.CG_PORT ?? 4310) });
-    console.log(`ChangeGuard ready at ${app.url}; execution adapter: synthetic-http-pool`);
+    console.log(`ChangeGuard ready at ${app.url}; cross-system recovery workspace; telemetry at /investigations`);
     let closing = false;
     const close = async () => { if (closing) return; closing = true; await app.close(); process.exit(0); };
     process.on('SIGINT', close); process.on('SIGTERM', close);

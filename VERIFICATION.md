@@ -6,11 +6,16 @@ Run the regression and integration suite from the repository root:
 node --test test/*.test.mjs demo/*.test.mjs
 node tools/check-docs.mjs
 node demo/evaluate.mjs
+node tools/validate-reference.mjs
 ```
 
 The suite covers tenant isolation, roles, source trust, TLS credential handling, telemetry validation, duplicate alert delivery, connection revision conflicts, collection retries, authority withdrawal, restart recovery, audit pagination, RAG grounding and synthetic execution safeguards.
 
 Integration tests use local HTTP telemetry and model protocol doubles. They verify transport and workflow behavior, not model accuracy or compatibility with every hosted service.
+
+Cross-system suites also cover all three domains, durable receipts, lost acknowledgments, restart recovery, source-event duplicates, malformed approval expiry, external revision drift, partial-action compensation, scoped RAG, custom pack validation, schedules and notification retries. Tests use disposable resources, never enterprise systems.
+
+With the complete reference environment running, use `node tools/workflow-smoke.mjs` and `node tools/workflow-smoke.mjs --failure-cases`. The harness uses separate operator/reviewer identities from private reference configuration. Select fresh resource IDs for repeated runs. A held model decision is not a passing recovery test; inspect its evidence without weakening policy to force success.
 
 With real configured models and the application running:
 

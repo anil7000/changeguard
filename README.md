@@ -1,248 +1,280 @@
 # ChangeGuard
 
-### Autonomous incident investigation, grounded in operational evidence
+### Cross-system recovery, from evidence to verified outcome
 
 [![Validation](https://github.com/anil7000/changeguard/actions/workflows/validate.yml/badge.svg)](https://github.com/anil7000/changeguard/actions/workflows/validate.yml)
 
-ChangeGuard connects telemetry, deployment events, service ownership and runbooks so operations teams can answer **what degraded, which dependencies could be involved, who owns the affected services, and what evidence to check next**.
+**Objective: resolve cross-system operational failures across an enterprise, from discovering the problem through authorized corrective action to verifying the business outcome, with minimal manual coordination.**
 
-Configure a source once. Collect on a schedule or trigger collection from Alertmanager. A bounded agent runs diagnostic tools, retrieves runbook evidence using hybrid RAG, generates cited hypotheses and reviews them before publishing an investigation. Operators work with an evidence workspace, not a chatbot.
+A payment succeeds but fulfillment never starts. A deployment recovers but traffic still follows the old route. An employee is approved for access but directory and entitlement systems disagree. Each problem crosses system and team boundaries. People normally assemble evidence, interpret procedures, coordinate permissions and check that the work actually finished.
 
-**v0.3 supports autonomous read-only investigation.** Production remediation is not enabled. Deploy it as a single-node investigation service behind your organization's access and network controls; it is not an HA platform or a universally certified production deployment.
+ChangeGuard supplies a common execution foundation: event intake, dependency-aware evidence collection, LLM investigation, scoped RAG, deterministic policy, durable action intent, independent approvals, compensation and outcome verification. Its primary interface is an operations workspace, not a chat window.
 
-## What it does
+**v0.4 is a runnable, single-node platform with three executable reference workflows and a bounded HTTP adapter contract.** Included systems are isolated reference implementations. Connecting production systems requires qualified adapters and domain-approved procedures; this repository does not claim universal integration, certification or high availability.
 
-- **Live telemetry:** Prometheus-compatible HTTP query collection, before/after comparisons, explicit thresholds and missing-data rejection.
-- **Event-driven investigation:** Alertmanager v4 webhook ingress with persistent duplicate-delivery detection.
-- **Continuous operation:** saved connections, per-source schedules, bounded retries, durable collection jobs, restart recovery and tenant queue quotas.
-- **Change correlation:** authenticated deployment-event ingestion from CI/CD, joined to the environment's service graph.
-- **Required AI and RAG:** local Qwen reasoning, real embeddings, lexical/semantic fusion, source citations and a skeptical review pass. No silent non-AI fallback.
-- **Dependency intelligence:** service owners, transitive potential impact, measured breaches, change timing and recovery-readiness checks.
-- **Controlled access:** tenant-derived authorization; viewer, operator, approver, administrator and ingestion-only collector roles.
-- **Operational controls:** disable connections, revision-protected configuration, host-level collection pause, bounded audit pagination, exported investigations and health diagnostics.
-- **Portable installation:** Node.js 24 on Windows, macOS, Linux and WSL; Docker Compose deployment with persistent data and local models.
+## Three domains, one engine
 
-## Integration compatibility
+| Workflow | Authoritative prerequisite | Ordered recovery | Verified outcome |
+|---|---|---|---|
+| Business transaction | Payment is paid | Reserve inventory; queue fulfillment | Payment remains paid, inventory reserved, fulfillment queued |
+| Technology recovery | Recovery release approved and tested | Restore deployment; reconcile routing | Authorization valid, deployment restored, routing reconciled |
+| Employee access | Active employment and standard-access approval | Enable existing account; apply standard entitlement | HR approval remains valid, account enabled, entitlement standard |
 
-| Environment / source | Integration |
-|---|---|
-| Kubernetes, VMs, bare metal, on-premises | Query an authorized Prometheus-compatible endpoint |
-| AWS, Azure, Google Cloud or other infrastructure | Same telemetry integration when metrics are available through that protocol |
-| Alertmanager | Native v4 webhook receiver; triggers collection from a saved connection |
-| GitHub Actions, GitLab CI, Jenkins or other delivery systems | POST deployment evidence using a collector identity |
-| Other monitoring systems | Push a normalized evidence bundle through the authenticated ingress API |
+Reference adapters implement these states in separate SQLite-backed HTTP services. They do not charge a real card, deploy Kubernetes workloads or grant real employee access. Production adapters must map each operation and postcondition to the actual source of truth; an HTTP acknowledgment alone is not proof of business success.
 
-No source-code changes are needed for supported protocols. **Configuration is still required:** endpoint authorization, credentials, metric queries, thresholds, service ownership and relevant runbooks. Cloud-native signing protocols, automatic topology discovery, arbitrary raw-log ingestion and unrestricted production commands are not included. A provider requiring SigV4, OAuth token refresh or another unsupported authentication mechanism needs an approved gateway or adapter; a Prometheus-compatible data format alone does not make its authentication compatible.
+Host-configured custom packs define additional bounded procedures without changing the engine: explicit roles, acyclic dependency edges, guard conditions and ordered reversible transitions. Healthcare, finance, manufacturing and other industries supply their own integrations and acceptance rules. See the [product scope](docs/product-scope.md) and [workflow contract](docs/workflows.md).
 
-## Architecture
+## Run locally: Windows, Linux, macOS or WSL
 
-### 1. Runtime
+Requirements: Git, Node.js **24.x**, and Ollama for local inference. There are no third-party npm runtime dependencies. Model inference is the dominant resource requirement; CPU-only runs can take minutes. Measure hardware capacity and latency on your deployment.
 
-```mermaid
-flowchart TB
-  Sources[Prometheus-compatible telemetry] --> Collector[Bounded read-only collector]
-  Alerts[Alertmanager] --> Ingress[Authenticated event ingress]
-  Delivery[CI/CD deployment events] --> Ingress
-  Ingress --> Queue[(Durable collection queue)]
-  Schedule[Saved source schedules] --> Queue
-  Queue --> Collector
-  Collector --> Evidence[(Evidence and investigations)]
-  Evidence --> Agent[Planner and diagnostic tools]
-  Agent --> RAG[Hybrid runbook retrieval]
-  RAG --> Model[Local reasoning and embedding models]
-  Agent --> Review[Grounding validation and skeptical review]
-  Review --> Workspace[Role-aware operations workspace]
-```
-
-### 2. Alert-to-investigation workflow
-
-```mermaid
-sequenceDiagram
-  participant Alertmanager
-  participant API
-  participant Queue
-  participant Source
-  participant Agent
-  participant Operator
-  Alertmanager->>API: Authenticated firing alert
-  API->>Queue: Deduplicated durable collection job
-  API-->>Alertmanager: Accepted job ID
-  Queue->>Source: Read current and baseline telemetry
-  Source-->>Queue: Validated measurements
-  Queue->>Agent: Evidence plus recent deployment events
-  Agent->>Agent: Plan, calculate, retrieve, synthesize, review
-  Agent-->>Operator: Cited investigation or explicit hold
-```
-
-### 3. Dependency impact
-
-```mermaid
-flowchart TB
-  Database[Database threshold breach] --> Checkout[Checkout consumer]
-  Database --> Payments[Payments consumer]
-  Payments --> Checkout
-  Checkout --> Commerce[Commerce owner]
-  Payments --> PaymentTeam[Payments owner]
-  Database --> DataTeam[Data platform owner]
-```
-
-Dependencies are supplied as `service.dependsOn`. Potential impact flows toward consumers. A dependency path is not proof of an outage, and deployment timing is not proof of causality.
-
-### 4. Network and identity boundaries
-
-```mermaid
-flowchart TB
-  Host[Host operator] --> Trust[Per-tenant origin allowlist and secret references]
-  Admin[Workspace administrator] --> Config[Revisioned connection configuration]
-  Trust --> Collector[Read-only HTTP collection]
-  Config --> Collector
-  Identity[Bearer identity] --> Tenant[Tenant and role authorization]
-  Tenant --> Ingress[Event and evidence ingress]
-  Collector --> Validation[Schema and freshness checks]
-  Ingress --> Validation
-  Validation --> Assessment[Non-executable assessment]
-```
-
-Uploaded text cannot choose destinations, credentials or tools. Redirects are rejected. Source credentials use server-side environment references and require HTTPS outside exact loopback addresses. Restrict outbound traffic at the infrastructure layer as well.
-
-### 5. Collection lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> QUEUED
-  QUEUED --> COLLECTING
-  COLLECTING --> QUEUED: bounded transient retry
-  COLLECTING --> FAILED: invalid evidence or exhausted attempts
-  COLLECTING --> HEALTHY: no threshold breach
-  COLLECTING --> SUBMITTED: assessment committed
-  SUBMITTED --> [*]
-  HEALTHY --> [*]
-  FAILED --> [*]
-```
-
-Collection status is separate from investigation status. `SUBMITTED` means evidence was queued, not that the AI accepted it. The investigation subsequently reaches `ANALYZED` or `HELD`.
-
-### 6. Deployment
-
-```mermaid
-flowchart TB
-  Users[Authorized operators] --> Edge[Organization-managed TLS and access gateway]
-  Edge --> App[Single ChangeGuard process]
-  App --> Data[(Private persistent SQLite volume)]
-  App --> Ollama[Local Ollama model service]
-  App --> Metrics[Allowlisted telemetry endpoints]
-  Secrets[Host-managed source credentials] --> App
-  Data --> Backup[Protected backups and restore drills]
-  App --> Archive[Audit export to independent archive]
-```
-
-## Start locally
-
-Install [Node.js 24](https://nodejs.org/) and [Ollama](https://ollama.com/download). Use PowerShell on Windows or Terminal on macOS/Linux/WSL:
+### 1. Get the project and models
 
 ```text
 git clone https://github.com/anil7000/changeguard.git
 cd changeguard
+node --version
 ollama pull qwen3:4b
 ollama pull qwen3-embedding:0.6b
-node tools/start.mjs
 ```
 
-1. Ensure Ollama is running; use `ollama serve` if needed.
-2. Open **http://127.0.0.1:4310**. Read the engineer token from the private `data/config.json` and sign in.
-3. In **Evidence library**, ingest a reviewed troubleshooting runbook for your environment.
-4. For an initial demonstration, use **Load synthetic example** under **Investigate supplied evidence**. Run the investigation and inspect citations and tool receipts.
-5. To connect real telemetry, follow the source setup below.
+Start Ollama if needed (`ollama serve` in a separate terminal). Default origin: `http://127.0.0.1:11434`.
 
-The start command creates configuration only if absent. Existing identities and data are preserved. Models are required; CPU inference can take minutes. Start with sufficient memory and disk for both model weights and inference; roughly 16 GB system RAM is a practical starting point, not a capacity guarantee.
-
-### Connect telemetry without editing application code
-
-Authorize the exact source origin on the host:
+### 2. Start the complete reference environment
 
 ```text
-node tools/sources.mjs allow --tenant local --origin https://prometheus.example.com --secret-env CG_SOURCE_PROMETHEUS
+node tools/reference.mjs
 ```
 
-Supply the source token in the **server process environment** using your secret manager. For a local PowerShell session:
+Open [the recovery workspace](http://127.0.0.1:4315). The launcher starts the application and **nine independent HTTP adapter services** on ports 4320–4328, each with its own durable database. They run in one launcher process for convenient local testing. No production credentials or systems are used.
+
+Private configuration is created at `data/reference/config.json`. Read the `engineer` token locally and enter it in the browser. Use the separate `reviewer` token for independent approval. Tokens stay in browser memory, not URLs or browser storage.
+
+Windows PowerShell:
 
 ```powershell
-$env:CG_SOURCE_PROMETHEUS = '<read-only-source-token>'
-node tools/start.mjs
+(Get-Content data/reference/config.json -Raw | ConvertFrom-Json).users | Select-Object id,token
 ```
 
-For Bash/zsh:
+Linux, macOS, WSL, or any terminal with Node:
+
+```text
+node -e "console.log(JSON.parse(require('node:fs').readFileSync('data/reference/config.json','utf8')).users.map(u=>({id:u.id,token:u.token})))"
+```
+
+Treat terminal output as secret; never paste it into issues. Restrict the data directory to the service account, including Windows directory ACLs. The reference environment has separate credentials and databases from a normal installation.
+
+### 3. Use all three workflows
+
+1. Sign in as `engineer` and select an authorized workflow.
+2. Enter resource `demo-1`, keep a unique source event ID and the supplied problem description.
+3. Select **Investigate and recover**. Collection, scoped retrieval, investigation, model review and policy evaluation run automatically.
+4. Business and technology reference bindings execute automatically when eligible. Access reconciliation stops at **REVIEW**. Disconnect, sign in as `reviewer`, open the workflow and approve its exact plan.
+5. Inspect the resulting record. **COMPLETED** means authoritative postconditions passed. Review citations, action receipts, expected revisions and final checks; export the evidence if needed.
+
+Use `demo-2` through `demo-20` for fresh runs. Resources and receipts survive restart. A completed resource produces no-write verification when it already satisfies the desired state. Reusing the same source event ID with different content is rejected.
+
+### 4. Exercise failure and recovery
+
+| Resource | Injected condition | Expected behavior |
+|---|---|---|
+| `demo-held` | Authoritative prerequisite unknown | HELD, no writes |
+| `demo-rejected` | Second action rejects with a known no-effect conflict | First action compensated; COMPENSATED, original problem unresolved |
+| `demo-timeout` | First action commits but response is lost | Automatic receipt reconciliation; no duplicate effect; completion if remaining checks pass |
+
+Access workflows still require independent approval. Model rejection, unavailable models or invalid evidence can instead hold a workflow before execution; no result is fabricated to bypass these conditions.
+
+Scripted validation against the running reference environment:
+
+```text
+node tools/workflow-smoke.mjs
+node tools/workflow-smoke.mjs --failure-cases
+```
+
+The script uses both reference identities to exercise approval. For UI/protocol tests without inference, start a separate disposable environment using `node tools/reference.mjs --protocol-test-double`. This explicit option does **not** validate AI quality.
+
+### Platform-specific settings
+
+Scripts use Node APIs: no Bash, Make, Python or Java requirement. Native PowerShell needs no execution-policy change. On WSL, run application and model in WSL or configure a reachable model origin. Never open the same SQLite installation from Windows and WSL simultaneously.
+
+Different local model port, PowerShell:
+
+```powershell
+$env:CG_MODEL_BASE='http://127.0.0.1:11435'
+node tools/reference.mjs
+```
+
+Linux/macOS/WSL:
 
 ```sh
-export CG_SOURCE_PROMETHEUS='<read-only-source-token>'
-node tools/start.mjs
+CG_MODEL_BASE=http://127.0.0.1:11435 node tools/reference.mjs
 ```
 
-Stop the existing process before restarting. Omit `--secret-env` only when your approved endpoint requires no bearer credential. Never put real secrets into shell scripts or committed files.
+`CG_PORT` changes the UI port; `CG_REFERENCE_BASE_PORT` changes adapter ports at initialization; `CG_REFERENCE_DATA` selects a separate installation. Existing endpoints are not silently rewritten when ports change: use a new directory or explicitly review saved configuration. Ctrl+C stops the services; restart the same command to resume durable work.
 
-In the dashboard:
+## Architecture
 
-1. Choose **New connection**.
-2. Set its ID, environment and Prometheus base URL.
-3. Add the service IDs, owners and dependency relationships.
-4. Add scoped PromQL expressions and thresholds. Each query must produce one numeric sample. For example, `avg(up{job="application"})` measures scrape-target availability for that job, not end-user service availability.
-5. Choose a baseline window and schedule; `0` disables scheduled collection.
-6. Choose **Only on threshold breach** or **Every successful collection**.
-7. Save, then choose **Collect now**.
-8. Open the resulting investigation from **Collection activity**.
+### 1. Enterprise execution foundation
 
-Enablement also activates a nonzero schedule. Start manually, inspect source mapping and evidence, and then enable the desired interval. An invalid or empty query result fails collection; it is never reported as healthy.
+```mermaid
+flowchart LR
+  Events[Events and integration gateways] --> Intake[Authenticated normalized ingress]
+  Tickets[Tickets and chat gateways] --> Intake
+  Manual[Operations workspace] --> Intake
+  Schedule[Scheduled reconciliation] --> Intake
+  Intake --> State[(Durable workflow state)]
+  State --> Evidence[Dependency-aware adapter reads]
+  Evidence --> Agents[Investigator and reviewer]
+  Knowledge[Binding-scoped procedures] --> RAG[Hybrid lexical and vector RAG]
+  RAG --> Agents
+  Agents --> Policy[Deterministic policy and approval]
+  Policy --> Saga[Durable action and compensation engine]
+  Saga --> Systems[Authorized system adapters]
+  Systems --> Verify[Independent state reads]
+  Verify --> State
+  State --> Outbox[(Notification outbox)]
+  Outbox --> Channels[Configured integration receiver]
+```
 
-[Integration setup, payloads and Alertmanager configuration](docs/integrations.md)
+Ticket/chat/event inputs share an API. Native Slack, Jira, ServiceNow and cloud-provider connectors are not bundled; a gateway translates payloads and receives status callbacks. Incoming events cannot choose arbitrary destinations or actions.
 
-## Roles and operations
+### 2. Shared engine, different dependency graphs
 
-| Role | Authority |
-|---|---|
-| Viewer | Read tenant investigations, connections and audit records |
-| Operator | Submit investigations, request collections, publish deployment evidence; operate the synthetic lab |
-| Collector | Push evidence/deployments and trigger collections; cannot read investigations or execute actions |
-| Approver | Independently approve eligible synthetic-lab proposals; not production remediation |
-| Admin | Configure sources and runbooks; inspect identities and authorized origins; enable source schedules |
+```mermaid
+flowchart TB
+  Engine[Shared workflow engine] --> Business[Business transaction]
+  Engine --> Technology[Technology recovery]
+  Engine --> Access[Access reconciliation]
+  Business --> Payment[Paid payment]
+  Payment --> Inventory[Inventory reservation]
+  Inventory --> Fulfillment[Fulfillment handoff]
+  Technology --> Release[Approved recovery release]
+  Release --> Deployment[Deployment state]
+  Deployment --> Routing[Traffic routing]
+  Access --> HR[Approved active employee]
+  HR --> Directory[Directory account]
+  Directory --> Entitlement[Standard entitlement]
+```
 
-Roles combine explicitly; administrator does not automatically imply operator. Host operators provision identities and authorize outbound sources.
+Dependencies are declared process relationships, not automatically discovered topology. Custom packs extend this graph and transition contract. Unsupported or ambiguous states require human judgment.
+
+### 3. Durable execution and uncertainty
+
+```mermaid
+sequenceDiagram
+  participant Engine
+  participant DB as Durable store
+  participant Adapter
+  participant System as Source of truth
+  Engine->>DB: Persist intent and stable operation ID
+  Engine->>Adapter: Look up prior receipt
+  alt No prior receipt
+    Engine->>Engine: Recheck authority, evidence and prerequisites
+    Engine->>Adapter: Apply bounded revision-checked transition
+    Adapter->>System: Atomic operation
+    Adapter-->>Engine: Durable intent-bound receipt
+  else Receipt exists after retry or restart
+    Adapter-->>Engine: Return same durable receipt
+  end
+  Engine->>DB: Persist receipt
+  Engine->>System: Independently read postconditions
+  alt Outcome verified
+    Engine->>DB: Complete and enqueue notification
+  else Known failure with owned effects
+    Engine->>Adapter: Reverse owned writes using receipt revisions
+  end
+```
+
+This is at-least-once delivery with idempotent adapters, not distributed exactly-once execution. An adapter must atomically record effects/receipts or use an equivalent provider idempotency mechanism. A timeout never proves an action failed.
+
+### 4. Authorization and safety
+
+```mermaid
+flowchart TB
+  Operator[Host operator] --> Bindings[Pack, resource scope and adapter allowlist]
+  Operator --> Secrets[Environment-backed secrets]
+  Identity[Authenticated identity] --> Tenant[Tenant and role checks]
+  Tenant --> Request[Workflow request]
+  Request --> Plan[Fixed version-bound plan]
+  Bindings --> Plan
+  Model[Untrusted model recommendation] --> Gate[Deterministic gate]
+  Plan --> Gate
+  Reviewer[Independent reviewer when required] --> Gate
+  Gate --> Adapter[Bounded write adapter]
+  Secrets --> Adapter
+  Adapter --> CAS[Revision and state preconditions]
+  CAS --> Outcome[Read-back verification]
+```
+
+Collectors can trigger host-authorized workflows but cannot read workspace data. An automatic binding may perform its permitted writes following collector events: that identity is an execution-triggering capability, not just a monitoring credential. Models never obtain credentials or an arbitrary command tool.
+
+### 5. Hosting and dependencies
+
+```mermaid
+flowchart LR
+  Users[Browser or integration gateway] --> TLS[TLS and organizational access boundary]
+  TLS --> App[Single Node.js 24 process]
+  App --> Disk[(Protected SQLite WAL volume)]
+  App --> Inference[Ollama or compatible hosted inference]
+  App --> Embeddings[Embedding model]
+  App --> Adapters[HTTPS adapters]
+  Disk --> Backup[Consistent offline backup]
+  App --> Archive[External audit export]
+```
+
+Normal installation: `node tools/init.mjs`, configure private bindings and approved documents, then `node tools/start.mjs`. UI port: 4310. Existing v0.3 records remain available; telemetry investigations move to `/investigations`. Migrations add tables without deleting data. Stop the service and back up its data before upgrading.
+
+`docker compose up --build -d` runs the normal application with initialized configuration. For the complete reference environment and containerized local models:
 
 ```text
-node tools/access.mjs add --id monitoring --tenant local --roles collector
-node tools/access.mjs add --id observer --tenant local --roles viewer
-node tools/access.mjs rotate --id monitoring --tenant local
-node tools/doctor.mjs
+docker compose -f compose.reference.yaml up --build -d
+docker compose -f compose.reference.yaml exec ollama ollama pull qwen3:4b
+docker compose -f compose.reference.yaml exec ollama ollama pull qwen3-embedding:0.6b
 ```
 
-Access and source-trust changes take effect after restart. The tools preserve a private configuration backup. Restrict configuration, backups and SQLite files to the service account. The dashboard never reveals identity tokens.
+Open port 4315 and read the generated token in `data/reference/config.json`. The model service stays internal to the Compose network. Volume ownership must allow UID 1000 to create private files. Do not expose the reference environment publicly. See [operations](docs/operations.md).
 
-## Deployment and operational guide
+### 6. Evidence and compliance responsibilities
 
-Native installation works on Windows, macOS, Linux and WSL. For WSL, run Node and Ollama together in the same environment unless you deliberately configure a protected cross-host endpoint. Do not share one active SQLite database between Windows and WSL processes.
+```mermaid
+flowchart LR
+  Sources[Authorized system state] --> Snapshot[Timestamped evidence]
+  Procedures[Approved procedures] --> Citation[Digest-bound citations]
+  Snapshot --> Decision[Agent review and deterministic decision]
+  Citation --> Decision
+  Decision --> Approval[Approval and exact-plan digest]
+  Approval --> Receipts[Intent and effect receipts]
+  Receipts --> Checks[Postcondition or compensation checks]
+  Checks --> Audit[Hash-linked tenant audit]
+  Audit --> Governance[Retention and independent archival]
+```
 
-For Docker Compose with local models:
+These controls support review; they do not confer HIPAA, PCI DSS, SOC 2 or other compliance. Configure identity federation at an approved boundary, data classification, model-provider agreements, encryption, retention, incident procedures and independent audit storage. Local administrators can rewrite the audit database. See [SECURITY.md](SECURITY.md).
+
+## Connect a real environment once
+
+1. Approve a workflow pack's authoritative sources, reversible actions and acceptance conditions.
+2. Implement or qualify the [adapter contract](docs/workflows.md). Adapters independently enforce resource scope, revision checks, idempotency and durable receipts.
+3. Configure exact tenant origins, server-side secret references, resource prefixes, selected procedure IDs and automatic versus approval policy. Treat configuration as privileged code.
+4. Ingest approved procedures through `/api/documents`. Expired or withdrawn evidence prevents new writes.
+5. Connect existing event/ticket/chat/CI gateways to `POST /api/workflows`; optionally add reconciliation schedules and a notification receiver. Routine users do not recreate mappings per incident.
+6. Rehearse failures in staging before enabling production bindings. Irreversible actions and unsupported states require a different approved procedure or human handling.
+
+## Models
+
+Local defaults are `qwen3:4b` reasoning and `qwen3-embedding:0.6b` embeddings, with lexical matching and reciprocal-rank fusion. Both inference and embeddings are required; no silent heuristic fallback exists. Review model licenses, data handling and task-specific quality before adoption.
+
+Compatible paid/hosted models can use supported chat-completions and embedding JSON envelopes over HTTPS, with environment-supplied credentials. Provider-specific APIs need an adapter. Larger models must pass the same schema, citation, safety and latency evaluations. See [model configuration](docs/models.md).
+
+## Validation and deployment limits
 
 ```text
-node tools/init.mjs
-docker compose -f compose.yaml -f compose.models.yaml up --build -d
-docker compose -f compose.yaml -f compose.models.yaml exec ollama ollama pull qwen3:4b
-docker compose -f compose.yaml -f compose.models.yaml exec ollama ollama pull qwen3-embedding:0.6b
-docker compose -f compose.yaml -f compose.models.yaml exec changeguard node tools/doctor.mjs
+node --test test/*.test.mjs demo/*.test.mjs
+node tools/check-docs.mjs
 ```
 
-Skip initialization if configuration already exists. Compose exposes the dashboard on host loopback; Ollama remains on the container network. Use your deployment's secret injection and egress controls for live sources. On Linux, the application data mount must be writable by container UID 1000. GPU device mappings are infrastructure-specific and not configured automatically.
+Tests cover three domains, tenant authorization, duplicate events, lost acknowledgments, restart reconciliation, malformed approvals, withdrawn authority, RAG isolation, drift, compensation, schedules and notification failures. Protocol doubles validate orchestration, not reasoning quality; real-model smoke testing is separate. See [validation](VERIFICATION.md).
 
-- [Operations, backups, upgrades, limits and API](docs/operations.md)
-- [Models and alternative providers](docs/models.md)
-- [Security boundaries and deployment requirements](SECURITY.md)
-- [Reproducible validation commands](VERIFICATION.md)
+Current boundaries: one process owns one SQLite database; no distributed leader election, native SSO, automatic enterprise topology discovery, vendor connector marketplace, automatic erasure service or production-scale SLA. Heterogeneous systems are not globally atomic. Cross-system races are checked before writes and detected through verification; adapters must enforce stronger domain invariants where needed. Compensation stops on conflicting external changes, retaining the workflow's resource lock for safe reconciliation.
 
-## Safe autonomy and production adoption
-
-ChangeGuard independently collects and investigates through configured read-only interfaces. It does **not** autonomously roll back deployments, run shell commands or change cloud resources. Its separate, collapsed execution lab only modifies a local synthetic fixture.
-
-Findings are hypotheses, not proven RCA. Human operators must verify source evidence and use their approved incident/change process. A `HELD` or `FAILED` result is actionable diagnostic information, not permission to bypass safeguards.
-
-Before exposing a deployment beyond a trusted pilot, supply TLS and enterprise identity integration, secret lifecycle management, egress restrictions, retention/deletion policy, backup/restore testing and independent security review. Current storage and workers have single-process ownership, not multi-node HA. Model quality, throughput and environment compatibility must be evaluated on representative operational data. No compliance certification or production adoption is claimed.
-
-Public source availability does not itself grant an open-source license; the repository currently has no project-wide license grant. Model licenses are separate.
+Production readiness belongs to a qualified deployment and its integrations, not a label inferred from a passing local demonstration.

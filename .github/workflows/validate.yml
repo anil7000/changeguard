@@ -19,6 +19,8 @@ jobs:
       - run: node --test test/*.test.mjs demo/*.test.mjs
       - run: node demo/evaluate.mjs
       - run: node tools/check-docs.mjs
+      - name: Cross-domain reference acceptance (protocol double)
+        run: node tools/validate-reference.mjs
   container:
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +45,8 @@ jobs:
         run: sudo env PATH="$PATH" node tools/assess.mjs
       - name: Container test suite
         run: docker compose exec -T changeguard node --test 'test/*.test.mjs' 'demo/*.test.mjs'
+      - name: Cross-domain container acceptance (protocol double)
+        run: docker compose exec -T changeguard node tools/validate-reference.mjs
       - if: always()
         run: docker compose logs --tail=100
       - if: always()
