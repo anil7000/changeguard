@@ -1,5 +1,8 @@
 # Hosting, deployment and dependencies
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 ## Hosting choices
@@ -16,25 +19,7 @@ No deployment chart, cloud account or managed service has been provisioned by th
 
 ## 3. Private deployment topology
 
-```mermaid
-flowchart TB
-  User[Corporate user] --> IdP[Enterprise identity provider]
-  IdP --> Edge[Private ingress]
-  subgraph Control[Control network]
-    Edge --> API[API and workspace]
-    API --> WF[Workflow and policy]
-    WF --> DB[(Database)]
-    WF --> Store[(Evidence storage)]
-    WF --> Model[Approved model gateway]
-  end
-  subgraph Execution[Restricted execution network]
-    Worker[Ephemeral worker] --> Proxy[Allowlisted egress proxy]
-    Worker --> Test[Disposable rehearsal namespace]
-  end
-  Worker -->|Pull scoped job using workload identity| WF
-  Proxy --> Target[Explicitly authorized targets]
-  Keys[Secret manager and key service] --> Worker
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 Workers initiate authenticated connections to retrieve jobs; production networks do not need arbitrary inbound model access. Separate rehearsal and production identities. Separate the platform's administrative access from target access.
 
@@ -55,16 +40,6 @@ Before implementation, select supported versions, pin artifact digests, verify l
 
 ## 4. Regional cell model
 
-```mermaid
-flowchart LR
-  Router[Tenant to region directory] --> A[Region A control cell]
-  Router --> B[Region B control cell]
-  A --> DA[(Region A evidence and keys)]
-  B --> DB[(Region B evidence and keys)]
-  A --> WA[Region A workers]
-  B --> WB[Region B workers]
-  A --> BA[Approved regional backup]
-  B --> BB[Approved regional backup]
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 The directory stores routing identifiers, not evidence. Cross-region recovery requires an approved residency and key-access plan. Avoid active-active mutation of the same target in the first release. Capacity sizing must come from measured event rates, evidence volume, workflow duration and model latency; there are no invented enterprise throughput claims.

@@ -1,29 +1,13 @@
 # Safety, approval and execution semantics
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 ## 7. Change state machine
 
-```mermaid
-stateDiagram-v2
-  [*] --> Observed
-  Observed --> Investigating
-  Investigating --> Held: missing or conflicting evidence
-  Held --> Investigating: refreshed evidence
-  Investigating --> Rehearsing: test plan permitted
-  Rehearsing --> Rejected: violated invariant
-  Rehearsing --> AwaitingApproval: checks passed
-  AwaitingApproval --> Authorized: valid independent approval
-  Authorized --> Held: drift or expiry
-  Authorized --> Executing: preflight recheck
-  Executing --> Verifying
-  Executing --> RecoveryReview: partial or ambiguous failure
-  Verifying --> Completed: postconditions satisfied
-  Verifying --> RecoveryReview: health failed or unknown
-  RecoveryReview --> Held: human decision required
-  Rejected --> [*]
-  Completed --> [*]
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 ## Action classes
 
@@ -31,25 +15,7 @@ Read-only investigation is still scoped and rate-limited. Rehearsal may write on
 
 ## 8. Execution sequence
 
-```mermaid
-sequenceDiagram
-  participant W as Workflow
-  participant P as Policy
-  participant H as Approver
-  participant E as Executor
-  participant T as Target
-  participant V as Verifier
-  W->>P: Submit action and evidence digests
-  P-->>W: Eligible for review
-  W->>H: Present diff, limits and recovery plan
-  H-->>W: Approve exact action with expiry
-  W->>P: Recheck state, approval and policy
-  P-->>E: Issue scoped authorization
-  E->>T: Apply using revision precondition
-  T-->>E: Operation receipt
-  E->>V: Request independent postcondition checks
-  V-->>W: Healthy, failed or unknown
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 Production authorization binds canonical action content, target identity, source revision, policy version and evidence digest. The broker checks the approved digest against the submitted action, then checks current target revision. Approval invalidates on drift. Cryptographic approval verification is proposed, not implemented by the offline demo.
 

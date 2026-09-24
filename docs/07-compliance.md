@@ -1,22 +1,15 @@
 # Compliance, privacy and governance
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 This is an engineering control design, not legal advice, certification or a claim of HIPAA, PCI DSS, GDPR, SOC 2 or ISO compliance. Applicability depends on jurisdiction, data flows, contractual roles and deployment. A qualified organizational reviewer must determine obligations before regulated use.
 
 ## 9. Evidence and accountability
 
-```mermaid
-flowchart LR
-  Scope[Approved regulatory and contract scope] --> Controls[Versioned control requirements]
-  Controls --> Policy[Enforceable platform policies]
-  Policy --> Workflow[Change workflow]
-  Workflow --> Records[Identity evidence approval and outcome records]
-  Records --> Export[Access-controlled evidence export]
-  Export --> Review[Independent compliance review]
-  Review --> Gaps[Documented gaps and remediation]
-  Gaps --> Controls
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 ## Proposed control mapping
 

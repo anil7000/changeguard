@@ -1,5 +1,8 @@
 # Sources, assumptions and limits
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 References checked during architecture preparation on 24 September 2026. These sources establish the problem or inform design; they do not endorse ChangeGuard.

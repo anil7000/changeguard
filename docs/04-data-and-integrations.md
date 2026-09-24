@@ -1,22 +1,13 @@
 # Data model, retrieval and integration contracts
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 ## 5. Evidence lifecycle
 
-```mermaid
-flowchart LR
-  Source[Authorized source] --> Filter[Minimize and redact]
-  Filter --> Snapshot[Versioned evidence snapshot]
-  Snapshot --> ACL[Tenant and source ACL labels]
-  ACL --> Index[Lexical and vector indexes]
-  Query[Authenticated investigation] --> Auth[Authorize query scope]
-  Auth --> Index
-  Index --> Recheck[Recheck current source access]
-  Recheck --> Context[Cited model context]
-  Context --> Finding[Finding with uncertainty]
-  Delete[Deletion or access revocation] --> Purge[Index cache and object reconciliation]
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 Treat retrieved text as untrusted data. It cannot override workflow policy or authorize tools. Filter before retrieval and recheck before returning evidence; post-filtering alone can leak through snippets, counts or cache behavior. Source revocation must invalidate retrieval caches and pending action eligibility.
 

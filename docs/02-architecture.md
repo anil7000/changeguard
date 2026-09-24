@@ -1,47 +1,19 @@
 # System architecture
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 All distributed components below are proposed. The local demonstrator implements only a small, deterministic decision function.
 
 ## 1. System context
 
-```mermaid
-flowchart LR
-  Engineer[Service owner] --> UI[Change workspace]
-  Reviewer[Independent approver] --> UI
-  Git[Source control and CI] --> Ingest[Event ingestion]
-  Telemetry[Metrics logs and traces] --> Read[Read-only connectors]
-  Catalog[Catalog and runbooks] --> Read
-  Ingest --> CP[ChangeGuard control plane]
-  Read --> CP
-  UI --> CP
-  CP --> Broker[Policy-bound action broker]
-  Broker --> Worker[Isolated execution workers]
-  Worker --> Target[Approved target environments]
-  CP --> Audit[Evidence and audit export]
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 ## 2. Component architecture
 
-```mermaid
-flowchart TB
-  API[Authenticated API] --> Workflow[Durable workflow engine]
-  API --> Policy[Deterministic policy service]
-  Workflow --> Planner[Investigation planner]
-  Planner --> Retrieval[Permission-aware retrieval]
-  Planner --> Gateway[Model gateway]
-  Retrieval --> DB[(Tenant-scoped metadata and vector index)]
-  Retrieval --> Objects[(Evidence object store)]
-  Workflow --> Tests[Rehearsal scheduler]
-  Tests --> Sandbox[Disposable test environment]
-  Workflow --> Approval[Approval service]
-  Approval --> Policy
-  Policy --> Broker[Action broker]
-  Broker --> Exec[Scoped executor]
-  Exec --> Verify[Independent outcome verifier]
-  Verify --> Workflow
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 ## Domain ownership
 

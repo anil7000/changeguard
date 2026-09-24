@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ChangeGuard · Change assurance</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body>
+<header><a class="brand" href="/">CG<span>ChangeGuard</span></a><span class="tag">OPERATIONS WORKSPACE</span><div id="identity">Not connected</div><button id="logout" hidden>Disconnect</button></header>
+<main>
+  <section id="login" class="login card"><p class="eyebrow">PRODUCTION CHANGE ASSURANCE · v0.1</p><h1>Evidence before action.</h1><p>Investigate a change, rehearse its dependency impact, and review the evidence before approving execution.</p><p class="notice">This release executes only against a synthetic HTTP pool. It has no production credentials or infrastructure write access.</p><form id="login-form"><label>Access token<input id="token" type="password" autocomplete="off" required placeholder="Token from your local data/config.json"></label><button class="primary">Open workspace</button></form><p class="muted">Tokens stay in memory only. Use the engineer identity to submit and execute, and the reviewer identity to approve.</p></section>
+  <section id="workspace" hidden>
+    <div class="heading"><div><p class="eyebrow">CHANGE ASSURANCE</p><h1>Operations overview</h1><p class="muted">A traceable path from proposed change to verified outcome.</p></div><button id="refresh">Refresh</button></div>
+    <div class="metrics"><div class="card"><span>Investigations</span><strong id="count-all">0</strong></div><div class="card"><span>Awaiting review</span><strong id="count-review">0</strong></div><div class="card"><span>Verified changes</span><strong id="count-complete">0</strong></div><div class="card"><span>Target revision</span><strong id="revision">—</strong></div></div>
+    <p class="notice">Execution boundary: synthetic HTTP connection-pool target. Industry examples use no patient, payment or customer data.</p>
+    <div class="layout">
+      <aside>
+        <section class="card" id="submit-panel"><h2>Submit a change</h2><form id="change-form">
+          <label>Change title<input name="title" required maxlength="180" value="Increase checkout concurrency"></label>
+          <label>Industry<select name="sector"><option value="retail">Retail & commerce</option><option value="healthcare">Healthcare</option><option value="finance">Finance</option><option value="saas">SaaS</option><option value="manufacturing">Manufacturing</option><option value="telecom">Telecom</option><option value="public-services">Public services</option><option value="media">Media</option></select></label>
+          <div class="pair"><label>Replicas<input name="replicas" type="number" min="1" max="32" value="3" required></label><label>Pool / replica<input name="poolPerReplica" type="number" min="1" max="128" value="20" required></label></div>
+          <label>Allocated capacity<input name="capacityBudget" type="number" min="1" max="4096" value="120" placeholder="Blank means unknown"></label>
+          <label class="check"><input name="evidenceFresh" type="checkbox" checked>Capacity input reviewed for this synthetic scenario</label>
+          <label class="check"><input name="rollbackTested" type="checkbox" checked>Recovery prerequisite reviewed</label>
+          <button class="primary">Investigate change</button>
+        </form></section>
+        <section class="card"><h2>Dependency map</h2><div class="dependency"><div>Change proposal</div><span>↓</span><div>Replica connection pools</div><span>↓</span><div>Shared capacity budget</div><span>↓</span><div>HTTP rehearsal & verification</div></div><p class="muted">Fixed model for this release—not discovered production topology.</p></section>
+        <section class="card" id="ingest-panel"><h2>Evidence library</h2><form id="document-form"><label>Runbook title<input name="title" required maxlength="180"></label><label>Source reference<input name="source" required maxlength="300" placeholder="Reviewed repository path or document name"></label><label>Reviewed text<textarea name="text" required minlength="20" maxlength="50000" rows="4"></textarea></label><button>Ingest runbook</button></form><p class="muted">Seven-day expiry. Synthetic or approved operational text only.</p><div id="documents"></div></section>
+      </aside>
+      <div class="content">
+        <section class="card"><div class="section-title"><h2>Change queue</h2><span id="queue-status" class="muted">Auto-refresh · 3 seconds</span></div><div class="table-wrap"><table><thead><tr><th>Change</th><th>Industry</th><th>Status</th><th>Demand</th></tr></thead><tbody id="changes"></tbody></table></div><p id="empty" class="muted">No changes yet. Submit a safe scenario or exceed capacity to test a blocked change.</p></section>
+        <section class="card" id="detail"><p class="eyebrow">INVESTIGATION WORKSPACE</p><h2>Select a change</h2><p class="muted">Evidence, hypotheses, test receipts and approvals appear here.</p></section>
+        <section class="card"><div class="section-title"><h2>Audit trail</h2><button id="export">Export audit JSON</button></div><div id="audit"></div><p class="muted">Hash-linked local records detect edits when compared with a trusted export. They are not an independently immutable audit service.</p></section>
+      </div>
+    </div>
+  </section>
+  <div id="message" role="status" aria-live="polite"></div>
+</main><footer>ChangeGuard · Maintained by Anil Kumar Tangirala · Bounded execution, explicit evidence.</footer>
+</body></html>

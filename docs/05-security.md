@@ -1,21 +1,13 @@
 # Security architecture and threat model
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 ## 6. Authority boundaries
 
-```mermaid
-flowchart LR
-  Data[Untrusted repository and telemetry text] --> Agent[Unprivileged planner]
-  Agent --> Proposal[Typed action proposal]
-  Proposal --> Policy[Policy and permission check]
-  Human[Authorized independent reviewer] --> Approval[Digest-bound approval]
-  Approval --> Policy
-  Policy --> Broker[Credential broker]
-  Broker --> Worker[Short-lived scoped worker]
-  Worker --> Target[Named target and operation]
-  Worker --> Audit[Independent audit sink]
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 No direct path connects retrieved instructions or a model to credentials. Approval alone is insufficient: the broker must revalidate target state, policy version, evidence validity and revocation immediately before issuing a short-lived capability.
 

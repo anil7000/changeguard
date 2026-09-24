@@ -15,5 +15,5 @@ for (const file of files) {
   }
   diagrams += (content.match(/^```mermaid/gm) ?? []).length;
 }
-if (diagrams !== 10) throw new Error(`Expected 10 diagrams, found ${diagrams}`);
+if (diagrams !== 6) throw new Error(`Expected 6 README diagrams, found ${diagrams}`);
 console.log(`PASS: ${files.length} Markdown pages; local links, fences, hidden characters; ${diagrams} Mermaid blocks. Diagram rendering is a separate check.`);

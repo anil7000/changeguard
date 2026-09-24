@@ -1,5 +1,8 @@
 # Cross-industry use cases and adaptation
 
+> Future architecture reference. The implemented v0.1 behavior, diagrams, installation and usage are documented in the [main README](../README.md). Statements below describe target architecture unless explicitly stated otherwise.
+
+
 [Documentation index](../README.md)
 
 The reusable unit is an operational change: service, dependency, policy, evidence, test and outcome. An industry pack adds constraints and synthetic scenarios; it does not establish regulatory approval or domain expertise by itself.
@@ -17,18 +20,7 @@ The reusable unit is an operational change: service, dependency, policy, evidenc
 
 ## 10. Industry extension model
 
-```mermaid
-flowchart TB
-  Core[Shared change assurance engine] --> Contract[Versioned pack contract]
-  Contract --> Rules[Reviewed policy overlay]
-  Contract --> Fixtures[Synthetic scenario fixtures]
-  Contract --> Metrics[Domain postconditions]
-  Contract --> Data[Allowed data classifications]
-  Rules --> Review[Organization-specific review]
-  Fixtures --> Review
-  Metrics --> Review
-  Data --> Review
-```
+See the [architecture diagrams in the main README](../README.md#architecture-diagrams).
 
 ## Pack contract
 
