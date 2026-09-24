@@ -1,0 +1,6 @@
+[
+  {"id":"healthcare-over-capacity","replicas":12,"poolPerReplica":30,"capacityBudget":240,"evidenceFresh":true,"rollbackTested":true},
+  {"id":"retail-missing-capacity","replicas":8,"poolPerReplica":20,"capacityBudget":null,"evidenceFresh":true,"rollbackTested":true},
+  {"id":"retail-awaiting-review","replicas":4,"poolPerReplica":20,"capacityBudget":160,"evidenceFresh":true,"rollbackTested":true},
+  {"id":"saas-approved","replicas":3,"poolPerReplica":20,"capacityBudget":120,"evidenceFresh":true,"rollbackTested":true,"approval":{"actionId":"saas-approved","independent":true,"valid":true}}
+]
