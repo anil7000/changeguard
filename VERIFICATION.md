@@ -52,6 +52,14 @@ Local CPU inference takes minutes, not milliseconds. API responsiveness and mode
 - Documentation checker: 16 Markdown pages, local links, balanced fences, hidden characters and six README Mermaid blocks. Diagram rendering is checked separately after publication.
 - No production infrastructure, commercial model account, SSO, multi-node failover or compliance certification was tested.
 
+### Published release verification
+
+Implementation commit: [`03467f0`](https://github.com/anil7000/changeguard/commit/03467f0aed0f52a540d2be8ec74bc6fcc41f8fbd).
+
+[GitHub Actions run 36009313000](https://github.com/anil7000/changeguard/actions/runs/36009313000) completed successfully: native Ubuntu, Windows and macOS jobs, plus the container job. The container job built the image, checked readiness, ran the independent-approval synthetic execution smoke, ran the agentic assessment through an explicit HTTP model double, and executed the regression suite. This is not a real-model GPU/container benchmark.
+
+The published README's six Mermaid blocks were inspected as rendered diagram documents on GitHub. A final browser assessment against the published implementation reached `ANALYZED`; legacy unstructured assessments were held after restart as designed.
+
 ## Historical v0.1 verification (not evidence for untested v0.2 behavior)
 
 ## Scope and reproducibility
