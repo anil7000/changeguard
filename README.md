@@ -36,7 +36,7 @@ All primary architecture and usage diagrams are directly in this README.
 ### 1. Running architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
   Engineer[Engineer browser] --> API[Authenticated HTTP API]
   Reviewer[Reviewer browser] --> API
   API --> DB[(SQLite jobs evidence approvals audit)]
@@ -75,7 +75,7 @@ stateDiagram-v2
 ### 3. Retrieval and model boundary
 
 ```mermaid
-flowchart LR
+flowchart TB
   Files[Reviewed Markdown or text] --> Ingest[Admin ingestion]
   Ingest --> Docs[(Tenant runbooks with expiry)]
   Change[Change specification] --> Search[Fresh lexical retrieval]
@@ -127,7 +127,7 @@ Docker runs the same application with a writable data mount, read-only filesyste
 ### 6. Governance and industry extensions
 
 ```mermaid
-flowchart LR
+flowchart TB
   Owner[Organization owner] --> Scope[Approved data and operational scope]
   Scope --> Input[Synthetic changes and reviewed runbooks]
   Input --> Workflow[Common assurance workflow]
@@ -258,11 +258,11 @@ PowerShell:
 
 ```powershell
 $env:CG_TOKEN = (Get-Content data/config.json -Raw | ConvertFrom-Json).users[0].token
-node tools/ingest.mjs ./reviewed-runbooks
+node tools/ingest.mjs ./examples/runbooks
 Remove-Item Env:CG_TOKEN
 ```
 
-For other shells, set `CG_TOKEN` through a private prompt or secret manager and run the same importer. Set `CG_URL` for another instance; remote URLs require HTTPS. Relative file paths become citations, and reimport updates matching paths. Imported records expire after seven days. The API supports replacement and deletion.
+The included [synthetic runbook](examples/runbooks/connection-pools.md) lets you test ingestion immediately; substitute your own reviewed directory later. For other shells, set `CG_TOKEN` through a private prompt or secret manager and run the same importer. Set `CG_URL` for another instance; remote URLs require HTTPS. Relative file paths become citations, and reimport updates matching paths. Imported records expire after seven days. The API supports replacement and deletion.
 
 **Deletion withdraws a document from future retrieval and invalidates pending execution; historical investigation snapshots remain in the database.** This is not a full personal-data erasure implementation. Do not ingest regulated records.
 
