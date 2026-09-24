@@ -13,16 +13,18 @@ const bounded = (n, max) => Number.isSafeInteger(n) && n > 0 && n <= max;
 export function validateChange(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) fail(400, 'Expected a change object');
   if (typeof body.title !== 'string' || !body.title.trim() || body.title.length > 180) fail(400, 'Title must contain 1-180 characters');
-  if (!sectorList.includes(body.sector)) fail(400, 'Unsupported industry');
+  if (body.sector !== undefined && !sectorList.includes(body.sector)) fail(400, 'Unsupported industry');
+  const environment=body.environment ?? 'default';
+  if(typeof environment!=='string' || !/^[a-zA-Z0-9_-]{1,60}$/.test(environment))fail(400,'Environment must be 1-60 safe characters');
   if (body.kind === 'assessment') {
-    try { return { kind: 'assessment', title: body.title.trim(), sector: body.sector, bundle: validateBundle(body.bundle) }; }
+    try { return { kind: 'assessment', title: body.title.trim(), environment, ...(body.sector?{sector:body.sector}:{}), bundle: validateBundle(body.bundle) }; }
     catch (e) { fail(400, e.message); }
   }
   if (body.kind && body.kind !== 'synthetic') fail(400, 'Unsupported workflow kind');
   if (!bounded(body.replicas, 32) || !bounded(body.poolPerReplica, 128)) fail(400, 'Replicas must be 1-32; pool must be 1-128');
   if (body.capacityBudget !== null && !bounded(body.capacityBudget, 4096)) fail(400, 'Capacity must be null or 1-4096');
   if (typeof body.evidenceFresh !== 'boolean' || typeof body.rollbackTested !== 'boolean') fail(400, 'Evidence and recovery flags must be booleans');
-  return { title: body.title.trim(), sector: body.sector, replicas: body.replicas, poolPerReplica: body.poolPerReplica, capacityBudget: body.capacityBudget, evidenceFresh: body.evidenceFresh, rollbackTested: body.rollbackTested };
+  return { title: body.title.trim(), environment, ...(body.sector?{sector:body.sector}:{}), replicas: body.replicas, poolPerReplica: body.poolPerReplica, capacityBudget: body.capacityBudget, evidenceFresh: body.evidenceFresh, rollbackTested: body.rollbackTested };
 }
 
 export class Engine {

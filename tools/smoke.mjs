@@ -20,7 +20,7 @@ async function wait(id, desired) {
   }
   throw new Error(`Timed out waiting for ${desired}`);
 }
-const change = await request('/api/changes', engineer, 'POST', { title: 'End-to-end QA: pool rollout', sector: 'retail', replicas: 3, poolPerReplica: 10, capacityBudget: 120, evidenceFresh: true, rollbackTested: true });
+const change = await request('/api/changes', engineer, 'POST', { title: 'Synthetic pool workflow validation', environment: 'synthetic-lab', replicas: 3, poolPerReplica: 10, capacityBudget: 120, evidenceFresh: true, rollbackTested: true });
 await wait(change.id, 'REVIEW');
 await request(`/api/changes/${change.id}/approve`, reviewer, 'POST');
 await request(`/api/changes/${change.id}/execute`, engineer, 'POST');

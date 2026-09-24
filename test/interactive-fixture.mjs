@@ -1,0 +1,20 @@
+// Explicit local UI test fixture. Never imported by production code.
+import { createServer } from 'node:http';
+import { randomBytes } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { modelFixture } from './model-fixture.mjs';
+import { start } from '../src/server.mjs';
+if(process.env.CG_UI_FIXTURE!=='true')throw new Error('Set CG_UI_FIXTURE=true to run this synthetic test-only service');
+const source=createServer((req,res)=>{const url=new URL(req.url,'http://localhost');const time=Number(url.searchParams.get('time'));res.setHeader('content-type','application/json');res.end(JSON.stringify({status:'success',data:{resultType:'vector',result:[{metric:{},value:[time,time<Date.now()/1000-60?'1':'0.8']}]}}));});
+await new Promise(r=>source.listen(4313,'127.0.0.1',r));
+const model=await modelFixture(null,{reply:({system,input,output})=>system.includes('Synthesize')?{hypotheses:[{sourceService:'application',affectedServices:['application'],mechanism:'Reduced target availability may affect the application.',verification:'Check target health and recent changes.',observations:['tool:telemetry_compare'],runbooks:input.evidence.filter(e=>!e.documentId.startsWith('tool:')).slice(0,1).map(e=>e.documentId)}]}:output});
+const token=randomBytes(32).toString('hex');
+const users=[{id:'engineer',tenant:'qa',roles:['viewer','operator','admin'],token},{id:'reviewer',tenant:'qa',roles:['viewer','approver'],token:randomBytes(32).toString('hex')}];
+const config={users,llm:model.llm,connectorOrigins:[{tenant:'qa',origin:'http://127.0.0.1:4313'}]};
+const app=await start({config,dbPath:join(mkdtempSync(join(tmpdir(),'changeguard-ui-')),'db.sqlite'),port:4312});
+app.store.putDoc('qa',{id:'availability',title:'Application availability',source:'synthetic UI fixture',text:'When target availability drops, inspect service health, recent deployments and dependency saturation. Verify the suspected mechanism against telemetry before any changes.',expiresAt:new Date(Date.now()+86400000).toISOString()});
+console.log(JSON.stringify({url:app.url,token,source:'http://127.0.0.1:4313',notice:'Synthetic UI fixture only; no real model quality claim'}));
+let closing=false;const close=async()=>{if(closing)return;closing=true;await app.close();await model.close();await new Promise(r=>source.close(r));};
+process.on('SIGINT',close);process.on('SIGTERM',close);

@@ -1,0 +1,17 @@
+{
+  "id": "production-metrics",
+  "type": "prometheus",
+  "environment": "production",
+  "endpoint": "https://prometheus.example.com",
+  "enabled": false,
+  "intervalSeconds": 300,
+  "baselineMinutes": 15,
+  "mode": "on-breach",
+  "question": "Which observed signals and recent changes explain service degradation, and what should the owners verify?",
+  "services": [
+    {"id":"application","owner":"platform","tier":"critical","dependsOn":[]}
+  ],
+  "queries": [
+    {"id":"application-availability","service":"application","metric":"availability","expression":"avg(up{job=\"application\"})","limit":0.99}
+  ]
+}

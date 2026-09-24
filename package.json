@@ -1,11 +1,11 @@
 {
   "name": "changeguard",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=24.0.0 <25" },
   "scripts": {
-    "start": "node src/server.mjs",
+    "start": "node tools/start.mjs",
     "init": "node tools/init.mjs",
     "test": "node --test test/*.test.mjs demo/*.test.mjs",
     "check": "node tools/check-docs.mjs"

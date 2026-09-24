@@ -7,6 +7,7 @@ import { Store, digest, now, uid } from './store.mjs';
 import { Engine, fail } from './engine.mjs';
 import { acquireLock } from './lock.mjs';
 import { incidentBundle } from '../examples/incident-bundle.mjs';
+import { Automation } from './automation.mjs';
 
 const publicDir = fileURLToPath(new URL('../public/', import.meta.url));
 const assets = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] };
@@ -19,7 +20,7 @@ function checkConfig(config) {
   if (!Array.isArray(config.users) || config.users.length < 2) throw new Error('Configure at least two independent identities');
   const tokens = new Set(); const ids = new Set();
   for (const u of config.users) {
-    if (typeof u.token !== 'string' || u.token.length < 32 || tokens.has(u.token) || !/^[a-zA-Z0-9_-]{1,60}$/.test(u.id) || !/^[a-zA-Z0-9_-]{1,60}$/.test(u.tenant) || ids.has(`${u.tenant}/${u.id}`) || !Array.isArray(u.roles) || !u.roles.length || !u.roles.every(r => ['viewer', 'operator', 'approver', 'admin'].includes(r))) throw new Error('Invalid or duplicate identity configuration');
+    if (typeof u.token !== 'string' || u.token.length < 32 || tokens.has(u.token) || typeof u.id!=='string' || typeof u.tenant!=='string' || !/^[a-zA-Z0-9_-]{1,60}$/.test(u.id) || !/^[a-zA-Z0-9_-]{1,60}$/.test(u.tenant) || ids.has(`${u.tenant}/${u.id}`) || !Array.isArray(u.roles) || !u.roles.length || !u.roles.every(r => ['viewer', 'operator', 'approver', 'admin', 'collector'].includes(r))) throw new Error('Invalid or duplicate identity configuration');
     tokens.add(u.token); ids.add(`${u.tenant}/${u.id}`);
   }
 }
@@ -35,8 +36,8 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
   checkConfig(config);
   mkdirSync(dirname(resolve(dbPath)), { recursive: true });
   const unlock = acquireLock(resolve(dbPath) + '.lock');
-  let store; let engine;
-  try { store = new Store(dbPath); engine = new Engine(store, config); engine.seed(new Set(config.users.map(u => u.tenant))); }
+  let store; let engine; let automation;
+  try { store = new Store(dbPath); engine = new Engine(store, config); engine.seed(new Set(config.users.map(u => u.tenant))); automation=new Automation(store,engine,config); }
   catch (error) { store?.close(); unlock(); throw error; }
   const hashes = config.users.map(u => ({ user: u, hash: createHash('sha256').update(u.token).digest() }));
   const buckets = new Map();
@@ -55,17 +56,39 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
   const server = createServer(async (req, res) => {
     try {
       const path = new URL(req.url, 'http://localhost').pathname;
-      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.2.0' });
+      if (req.method === 'GET' && path === '/healthz') return json(res, 200, { status: 'ok', version: '0.3.0' });
       if (req.method === 'GET' && path === '/readyz') { store.db.prepare('SELECT 1').get(); return json(res, 200, { status: 'ready', adapter: 'synthetic-http-pool' }); }
       if (req.method === 'GET' && assets[path]) { const [name, type] = assets[path]; res.writeHead(200, { ...secureHeaders, 'content-type': `${type}; charset=utf-8` }); return res.end(readFileSync(resolve(publicDir, name))); }
       if (!path.startsWith('/api/')) fail(404, 'Not found');
       if (req.headers.origin && req.headers.origin !== `http://${req.headers.host}` && req.headers.origin !== `https://${req.headers.host}`) fail(403, 'Cross-origin request rejected');
       const user = authenticate(req);
       if (req.method === 'GET' && path === '/api/me') return json(res, 200, { id: user.id, tenant: user.tenant, roles: user.roles, llmConfigured: Boolean(config.llm?.url) });
+      if(user.roles.every(r=>r==='collector') && req.method==='GET')fail(403,'Collector identities cannot read investigation data');
+      const ingestRole=()=>{if(!user.roles.some(r=>['operator','collector'].includes(r)))fail(403,'operator or collector role required');};
+      if(req.method==='GET' && path==='/api/connections')return json(res,200,store.connections(user.tenant));
+      if(req.method==='POST' && path==='/api/connections'){role(user,'admin');return json(res,201,automation.configure(user,await body(req)));}
+      if(req.method==='GET' && path==='/api/collections')return json(res,200,store.collections(user.tenant));
+      if(req.method==='GET' && path==='/api/operations'){
+        const states=store.db.prepare("SELECT json_extract(body,'$.state') AS state,count(*) AS count FROM changes WHERE tenant=? GROUP BY state").all(user.tenant);
+        return json(res,200,{version:'0.3.0',automationPaused:Boolean(config.automationPaused),states,pendingAssessments:store.pendingCount(user.tenant),pendingCollections:store.collectionCount(user.tenant),limits:{pendingPerTenant:20,connections:20,queriesPerConnection:12},model:{configured:Boolean(config.llm?.url && config.llm?.embeddingUrl),model:config.llm?.model,embeddingModel:config.llm?.embeddingModel},capabilities:['prometheus','alertmanager-v4','evidence-push','deployment-events','scheduled-investigation']});
+      }
+      if(req.method==='GET' && path==='/api/access'){
+        role(user,'admin');return json(res,200,{users:config.users.filter(u=>u.tenant===user.tenant).map(({id,roles})=>({id,roles})),origins:(config.connectorOrigins??[]).filter(c=>c.tenant===user.tenant).map(c=>c.origin)});
+      }
+      if(req.method==='POST' && path==='/api/events/evidence'){ingestRole();const data=await body(req);if(data?.kind && data.kind!=='assessment')fail(400,'Evidence ingress only creates read-only assessments');return json(res,201,engine.submit(user,{...data,kind:'assessment'},req.headers['idempotency-key']));}
+      const deploymentMatch=/^\/api\/environments\/([a-zA-Z0-9_-]+)\/deployments$/.exec(path);
+      if(req.method==='POST' && deploymentMatch){ingestRole();return json(res,201,automation.deployment(user,deploymentMatch[1],await body(req)));}
+      const connectorMatch=/^\/api\/connections\/([a-zA-Z0-9_-]+)\/(collect|alertmanager)$/.exec(path);
+      if(req.method==='POST' && connectorMatch){ingestRole();return json(res,202,connectorMatch[2]==='collect'?automation.enqueue(user,connectorMatch[1],req.headers['idempotency-key']):automation.webhook(user,connectorMatch[1],await body(req)));}
       if (req.method === 'GET' && path === '/api/example-bundle') return json(res, 200, incidentBundle());
       if (req.method === 'GET' && path === '/api/changes') return json(res, 200, store.summaries(user.tenant));
       if (req.method === 'GET' && path === '/api/target') return json(res, 200, store.target(user.tenant));
-      if (req.method === 'GET' && path === '/api/audit') return json(res, 200, store.events(user.tenant));
+      if (req.method === 'GET' && path === '/api/audit') {
+        const query=new URL(req.url,'http://localhost').searchParams;
+        const limit=query.has('limit')?Number(query.get('limit')):500;const after=query.has('after')?Number(query.get('after')):undefined;
+        if(!Number.isSafeInteger(limit)||limit<1||limit>1000||after!==undefined&&(!Number.isSafeInteger(after)||after<0))fail(400,'Invalid audit pagination');
+        return json(res,200,store.eventPage(user.tenant,{after,limit}));
+      }
       if (req.method === 'GET' && path === '/api/documents') return json(res, 200, store.documentSummaries(user.tenant));
       if (req.method === 'POST' && path === '/api/changes') { role(user, 'operator'); return json(res, 201, engine.submit(user, await body(req), req.headers['idempotency-key'])); }
       if (req.method === 'POST' && path === '/api/documents') {
@@ -94,11 +117,11 @@ export async function start({ config, dbPath, host = '127.0.0.1', port = 0, inte
     } catch (e) { if (!res.headersSent && !res.destroyed) json(res, e.status ?? 500, { error: e.status ? e.message : 'Internal error; action not confirmed' }); }
   });
   server.requestTimeout = 10000; server.headersTimeout = 10000;
-  const timer = setInterval(() => engine.tick().catch(() => {}), interval);
+  const timer = setInterval(() => { engine.tick().catch(() => {}); try{automation.tick();}catch{ /* Persisted jobs remain available for the next tick. */ } }, interval);
   try { await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); }); }
-  catch (error) { clearInterval(timer); await engine.stop(); store.close(); unlock(); throw error; }
+  catch (error) { clearInterval(timer); await automation.stop(); await engine.stop(); store.close(); unlock(); throw error; }
   let closed = false;
-  return { server, store, engine, url: `http://${host}:${server.address().port}`, async close() { if (closed) return; closed = true; clearInterval(timer); await new Promise(resolve => server.close(resolve)); await engine.stop(); store.close(); unlock(); } };
+  return { server, store, engine, automation, url: `http://${host}:${server.address().port}`, async close() { if (closed) return; closed = true; clearInterval(timer); await new Promise(resolve => server.close(resolve)); await automation.stop(); await engine.stop(); store.close(); unlock(); } };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
